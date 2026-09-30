@@ -5,10 +5,10 @@ import { buildPageMetadata, SITE_URL } from '../../utils/siteMetadata';
 import { isCftcEnabled } from '../../utils/cftcFeature.js';
 import { parseRiskLocation, riskViewPath } from './riskNavigation.js';
 
-const TITLE = 'Company Risk — Financial Resilience, Debt Maturities & Bank Risk';
+const TITLE = 'Company Risk — Business Drivers, Debt, Bank Capital & Exposures';
 const DESCRIPTION = isCftcEnabled()
-  ? 'Research company financial resilience, SEC debt maturities, FFIEC bank capital and credit quality, CFTC positioning and swaps, and New York Fed funding conditions. Free, source-linked evidence with clear reporting dates.'
-  : 'Research company financial resilience, SEC debt maturities, FFIEC bank capital and credit quality, and New York Fed funding conditions with source-linked evidence and reporting dates.';
+  ? 'Research business-specific risk drivers across banks, insurers, brokers, REITs and operating companies. Explore SEC financials and debt maturities, FFIEC bank capital, CFTC positioning and swaps, and New York Fed funding conditions. Free, source-linked evidence with clear reporting dates.'
+  : 'Research business-specific risk drivers across banks, insurers, brokers, REITs and operating companies. Explore SEC financials and debt maturities, FFIEC bank capital, and New York Fed funding conditions with source-linked evidence and reporting dates.';
 
 export const metadata: Metadata = buildPageMetadata({
   title: TITLE,

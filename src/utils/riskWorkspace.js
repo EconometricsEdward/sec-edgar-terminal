@@ -1,5 +1,5 @@
 // Risk-page presentation and deterministic, before-tax sensitivity calculations.
-export const RISK_VERSION = 'risk-workspace-v9';
+export const RISK_VERSION = 'risk-workspace-v10';
 export const SCREEN_LABELS = { low: 'Within screen', moderate: 'Monitor', elevated: 'Review', high: 'Priority review', info: 'Context', na: 'Unavailable' };
 export const PILLAR_LABELS = { credit: 'Credit', capital: 'Capital', liquidity: 'Liquidity', profitability: 'Earnings', quality: 'Earnings quality' };
 
@@ -16,7 +16,7 @@ const definitions = {
   htm_unrealized: ['HTM valuation gap', 'Tagged HTM fair value minus tagged carrying value. A gap is a valuation sensitivity, not a prediction of realized loss.', 'Check valuation assumptions, credit allowances, maturity, and the need to sell.', null],
   htm_adj_equity: ['Equity / assets after HTM mark', 'Before-tax sensitivity: apply the HTM valuation gap to both equity and assets. Taxes, hedges, and regulatory adjustments are excluded.', 'How would liquidity needs affect the ability to hold these securities to maturity?', null],
   nib_deposit_share: ['Noninterest-bearing deposits', 'Noninterest-bearing deposits divided by total deposits. Cost and stability depend on the depositor mix; direction alone is not a risk conclusion.', 'Review deposit concentration and repricing alongside this share.', null],
-  loss_ratio: ['Insurance loss ratio', 'Claims incurred divided by earned premiums. This excludes operating expenses and is not a combined ratio or statutory capital measure.', 'Review reserve development, expenses, and investment results.', '≤65% / ≤80% / ≤95% / >95%'],
+  loss_ratio: ['Claims and benefits / earned premiums', 'Reported incurred claims or policyholder benefits divided by earned premiums for the same annual or trailing-twelve-month duration. Claim reserves are balance-sheet stocks and are excluded. Life, health, property/casualty and mixed insurers have different reporting scopes; this descriptive comparison excludes operating expenses and investment income and is not a combined ratio, underwriting-profit conclusion or statutory capital measure.', 'Review the actual claims and premium scopes, reserve development, expenses and investment results.', null],
   ins_equity_assets: ['Equity / assets', 'Book equity / assets. Statutory insurance capital and reserve adequacy require separate disclosures.', 'Read subsidiary statutory capital and reserve development.', null],
   interest_coverage: ['Interest coverage', 'Operating income / interest expense, using an annual or trailing-twelve-month flow for both inputs. Operating income is an EBIT proxy.', 'Check cash interest, maturities, covenants, and the sustainability of operating profit.', '≥8× / ≥3× / ≥1.5× / <1.5×'],
   ocf_to_debt: ['Operating cash flow / debt', 'Annual or trailing-twelve-month operating cash flow / (current debt + noncurrent debt). Current debt uses its reported total or current long-term-debt maturities plus reported short-term borrowings; commercial paper is a short-term-borrowing fallback. Missing components are never zero.', 'Check cash conversion, debt definitions, maturities, and committed facilities.', '≥40% / ≥20% / ≥10% / <10%'],
@@ -33,7 +33,7 @@ const definitions = {
 };
 
 export function decorateRiskProfile(profile) {
-  const contextOnly = new Set(['reserve_coverage', 'htm_adj_equity', 'quick_ratio']);
+  const contextOnly = new Set(['reserve_coverage', 'htm_adj_equity', 'quick_ratio', 'loss_ratio']);
   const metrics = profile.metrics.map((metric) => {
     const [label, why, question, thresholds] = definitions[metric.id] || [null, metric.why, 'Review the source filing.', null];
     const level = contextOnly.has(metric.id) && metric.value != null ? 'info' : metric.zone.level;

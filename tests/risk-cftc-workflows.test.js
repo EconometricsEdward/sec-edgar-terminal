@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { normalizeRiskBasis, normalizeRiskView, parseRiskLocation, riskViewPath } from '../src/app/risk/riskNavigation.js';
+import { normalizeRiskBasis, normalizeRiskView, normalizeRiskExposurePanel, parseRiskLocation, riskViewPath } from '../src/app/risk/riskNavigation.js';
 import { fcmChange, fcmComparisonCsv, fcmMoney, fcmRatio, fcmSignals, filterFcmFirms } from '../src/app/risk/fcmPresentation.js';
 
 const firm = (overrides = {}) => ({
@@ -19,13 +19,39 @@ test('CFTC links retain broker capital and send retired market context to busine
   assert.equal(normalizeRiskView('unrecognized'), 'overview');
 });
 
-test('disabled CFTC views fall back to company overview without losing the ticker', () => {
-  assert.equal(normalizeRiskView('cftc', false), 'overview');
+test('disabled CFTC preserves SEC business exposures while broker capital falls back to the profile', () => {
+  assert.equal(normalizeRiskView('cftc', false), 'exposures');
   assert.equal(normalizeRiskView('fcm', false), 'overview');
-  assert.equal(normalizeRiskView('exposures', false), 'overview');
+  assert.equal(normalizeRiskView('exposures', false), 'exposures');
   assert.equal(normalizeRiskView('stress', false), 'overview');
-  assert.deepEqual(parseRiskLocation('?ticker=BAC&view=cftc', false), { ticker: 'BAC', view: 'overview', basis: 'ttm', entity: '', asOf: '' });
+  assert.deepEqual(parseRiskLocation('?ticker=BAC&view=cftc', false), { ticker: 'BAC', view: 'exposures', basis: 'ttm', entity: '', asOf: '' });
   assert.equal(riskViewPath('?ticker=BAC&view=fcm', 'fcm', false), '/risk?ticker=BAC');
+});
+
+test('disabled Market links restore concentrations while all SEC exposure panels and request selections remain available', () => {
+  for (const panel of ['concentrations', 'instruments', 'ownership']) {
+    assert.equal(normalizeRiskExposurePanel(panel, false), panel);
+    const search = `?ticker=AAPL&view=exposures&basis=annual&asOf=2026-06-30&exposurePanel=${panel}`;
+    const target = new URL(riskViewPath(search, 'exposures', false), 'https://secedgarterminal.com');
+    assert.equal(normalizeRiskExposurePanel(target.searchParams.get('exposurePanel'), false), panel);
+    assert.equal(target.searchParams.get('view'), 'exposures');
+    assert.equal(target.searchParams.get('ticker'), 'AAPL');
+    assert.equal(target.searchParams.get('basis'), 'annual');
+    assert.equal(target.searchParams.get('asOf'), '2026-06-30');
+  }
+  for (const key of ['view', 'tab']) {
+    const search = `?ticker=XOM&${key}=cftc&asOf=2025-06-30&exposurePanel=markets`;
+    const restored = parseRiskLocation(search, false);
+    const target = new URL(riskViewPath(search, restored.view, false), 'https://secedgarterminal.com');
+    assert.equal(restored.view, 'exposures');
+    assert.equal(normalizeRiskExposurePanel(target.searchParams.get('exposurePanel'), false), 'concentrations');
+    assert.equal(target.searchParams.has('exposurePanel'), false);
+    assert.equal(target.searchParams.has('tab'), false);
+    assert.equal(target.searchParams.get('asOf'), '2025-06-30');
+  }
+  assert.equal(normalizeRiskExposurePanel('markets'), 'markets');
+  assert.equal(normalizeRiskExposurePanel('markets', false), 'concentrations');
+  assert.equal(normalizeRiskExposurePanel('invalid', false), 'concentrations');
 });
 
 test('bookmarked market context links retain the company and reporting selection in Market links', () => {
@@ -48,7 +74,7 @@ test('company exposure deep links preserve filing cutoff across risk views and b
   assert.deepEqual(parseRiskLocation('?ticker=xom&view=exposures&asOf=2025-06-30'), { ticker: 'XOM', view: 'exposures', basis: 'ttm', entity: '', asOf: '2025-06-30' });
   assert.equal(riskViewPath('?ticker=XOM&view=exposures&asOf=2025-06-30', 'stress'), '/risk?ticker=XOM&asOf=2025-06-30');
   assert.equal(riskViewPath('?ticker=XOM&view=stress&asOf=2025-06-30', 'exposures'), '/risk?ticker=XOM&view=exposures&asOf=2025-06-30');
-  assert.deepEqual(parseRiskLocation('?ticker=XOM&view=exposures&asOf=2025-06-30', false), { ticker: 'XOM', view: 'overview', basis: 'ttm', entity: '', asOf: '2025-06-30' });
+  assert.deepEqual(parseRiskLocation('?ticker=XOM&view=exposures&asOf=2025-06-30', false), { ticker: 'XOM', view: 'exposures', basis: 'ttm', entity: '', asOf: '2025-06-30' });
 });
 
 test('retired risk tabs restore the profile without losing company or annual basis', () => {

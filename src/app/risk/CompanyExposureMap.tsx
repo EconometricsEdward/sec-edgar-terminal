@@ -8,6 +8,7 @@ import { CFTC_LAUNCH_CATALOG } from '../../utils/cftc.js';
 import { companyExposureMapCsv, companyExposureEvidenceMarkdown, exposureAmountLabel } from './exposurePresentation.js';
 import { downloadRiskFile } from './riskDownload';
 import { matchesExposureRequest, selectExposureEvidence } from './exposureSelection.js';
+import { normalizeRiskExposurePanel } from './riskNavigation.js';
 import s from './CompanyExposureMap.module.css';
 
 const loadingPanel = () => <p className={s.loading} role="status"><Loader2 size={18} className={s.spin} /> Opening exposure view…</p>;
@@ -15,7 +16,7 @@ const CompanyConcentrations = dynamic(() => import('./CompanyConcentrations'), {
 const ExposureInstruments = dynamic(() => import('./ExposureInstruments'), { loading: loadingPanel });
 const CompanyOwnership = dynamic(() => import('./CompanyOwnership'), { loading: loadingPanel });
 const PANELS = [['concentrations', 'Concentrations', 'Revenue & funding'], ['instruments', 'Credit & derivatives', 'Counterparties & contracts'], ['markets', 'Market links', 'SEC evidence + CFTC'], ['ownership', 'Funds & holders', 'Reported positions']] as const;
-function panelFromLocation() { const value = new URLSearchParams(window.location.search).get('exposurePanel'); return PANELS.some(([id]) => id === value) ? value! : 'concentrations'; }
+function panelFromLocation(cftcEnabled: boolean) { return normalizeRiskExposurePanel(new URLSearchParams(window.location.search).get('exposurePanel'), cftcEnabled); }
 
 type Amount = { text: string; kind: string; context: string };
 type Filing = { url: string; accession: string; form: string; filed: string; reportDate: string; role: 'annual' | 'quarterly' };
@@ -46,22 +47,23 @@ function validPayload(value: unknown): value is ExposureMap {
       && row.evidence.every(evidence => typeof evidence.text === 'string' && typeof evidence.url === 'string' && Array.isArray(evidence.amounts)));
 }
 
-export default function CompanyExposureMap({ ticker, asOf = '', basis = 'ttm', onAsOfChange, onBasisChange }: { ticker: string; asOf?: string; basis?: string; onAsOfChange: (value: string) => void; onBasisChange: (value: string) => void }) {
+export default function CompanyExposureMap({ ticker, asOf = '', basis = 'ttm', onAsOfChange, onBasisChange, cftcEnabled = true }: { ticker: string; asOf?: string; basis?: string; onAsOfChange: (value: string) => void; onBasisChange: (value: string) => void; cftcEnabled?: boolean }) {
   const [panel, setPanel] = useState<string | null>(null);
   const [draftAsOf, setDraftAsOf] = useState(asOf);
-  useEffect(() => { const restore = () => setPanel(panelFromLocation()); restore(); window.addEventListener('popstate', restore); return () => window.removeEventListener('popstate', restore); }, []);
+  useEffect(() => { const restore = () => setPanel(panelFromLocation(cftcEnabled)); restore(); window.addEventListener('popstate', restore); return () => window.removeEventListener('popstate', restore); }, [cftcEnabled]);
   useEffect(() => { setDraftAsOf(asOf); }, [asOf]);
-  function choosePanel(next: string) { setPanel(next); const url = new URL(window.location.href); if (next === 'concentrations') url.searchParams.delete('exposurePanel'); else url.searchParams.set('exposurePanel', next); window.history.pushState({}, '', url); }
+  const activePanel = panel === null ? null : normalizeRiskExposurePanel(panel, cftcEnabled);
+  function choosePanel(value: string) { const next = normalizeRiskExposurePanel(value, cftcEnabled); setPanel(next); const url = new URL(window.location.href); if (next === 'concentrations') url.searchParams.delete('exposurePanel'); else url.searchParams.set('exposurePanel', next); window.history.pushState({}, '', url); }
   return <section className={s.root} aria-label={`${ticker} business exposures`}>
     <div className={s.toolbar}><p><strong>{ticker}</strong><span>Company exposure workspace</span></p><details className={s.settings}><summary><SlidersHorizontal size={15} /> Reporting settings {asOf && <span>· {asOf}</span>}<ChevronDown size={15} /></summary><div className={s.settingsBody}><label>SEC filing basis<select value={basis} onChange={event => onBasisChange(event.target.value)}><option value="ttm">Latest filing</option><option value="annual">Annual filing</option></select></label><form onSubmit={event => { event.preventDefault(); if (draftAsOf !== asOf) onAsOfChange(draftAsOf); }}><label htmlFor="exposure-cutoff">Filed on or before<input id="exposure-cutoff" type="date" min="1994-01-01" max={new Date().toISOString().slice(0, 10)} value={draftAsOf} onChange={event => setDraftAsOf(event.target.value)} /></label><div className={s.actions}><button type="submit" disabled={draftAsOf === asOf}>Apply cutoff</button>{asOf && <button type="button" onClick={() => onAsOfChange('')}>Use latest</button>}</div></form><p>Each chart shows its reporting period. Holdings use separately dated portfolio reports.</p></div></details></div>
-    <nav className={s.panelNav} aria-label="Business exposure views">{PANELS.map(([id, label, subtitle], index) => <button key={id} aria-current={panel === id ? 'page' : undefined} aria-controls="company-exposure-panel" onClick={() => choosePanel(id)}><span className={s.navNumber}>0{index + 1}</span><span><strong>{label}</strong><small>{subtitle}</small></span></button>)}</nav>
-    {asOf && <p className={s.notice}><CalendarDays size={17} /><span>SEC filing cutoff: {dateLabel(asOf)}. CFTC observations are separately dated and may be later.</span></p>}
+    <nav className={s.panelNav} aria-label="Business exposure views">{PANELS.filter(([id]) => cftcEnabled || id !== 'markets').map(([id, label, subtitle], index) => <button key={id} aria-current={activePanel === id ? 'page' : undefined} aria-controls="company-exposure-panel" onClick={() => choosePanel(id)}><span className={s.navNumber}>0{index + 1}</span><span><strong>{label}</strong><small>{subtitle}</small></span></button>)}</nav>
+    {asOf && <p className={s.notice}><CalendarDays size={17} /><span>SEC filing cutoff: {dateLabel(asOf)}.{cftcEnabled && ' CFTC observations are separately dated and may be later.'}</span></p>}
     <div id="company-exposure-panel" className={s.panel}>
-      {panel === null && loadingPanel()}
-      {panel === 'concentrations' && <CompanyConcentrations ticker={ticker} basis={basis} asOf={asOf} />}
-      {panel === 'instruments' && <ExposureInstruments ticker={ticker} basis={basis} asOf={asOf} />}
-      {panel === 'markets' && <MarketConnections key={`${ticker}:${basis}:${asOf}`} ticker={ticker} basis={basis} asOf={asOf} />}
-      {panel === 'ownership' && <CompanyOwnership ticker={ticker} asOf={asOf} />}
+      {activePanel === null && loadingPanel()}
+      {activePanel === 'concentrations' && <CompanyConcentrations ticker={ticker} basis={basis} asOf={asOf} />}
+      {activePanel === 'instruments' && <ExposureInstruments ticker={ticker} basis={basis} asOf={asOf} />}
+      {cftcEnabled && activePanel === 'markets' && <MarketConnections key={`${ticker}:${basis}:${asOf}`} ticker={ticker} basis={basis} asOf={asOf} />}
+      {activePanel === 'ownership' && <CompanyOwnership ticker={ticker} asOf={asOf} />}
     </div>
   </section>;
 }

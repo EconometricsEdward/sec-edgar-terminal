@@ -296,12 +296,6 @@ const BANDS = {
     [(v) => v <= 1.1, 'elevated'],
     [() => true, 'high'],
   ],
-  lossRatio: [ // insurance: claims incurred / premiums earned
-    [(v) => v <= 0.65, 'low'],
-    [(v) => v <= 0.8, 'moderate'],
-    [(v) => v <= 0.95, 'elevated'],
-    [() => true, 'high'],
-  ],
   texasRatio: [ // nonaccruals / (tangible equity + allowance)
     [(v) => v < 0.3, 'low'],
     [(v) => v < 0.6, 'moderate'],
@@ -723,16 +717,49 @@ export function assessRisk(facts, sicCode, cik, { basis = 'annual' } = {}) {
 
   // ---------- INSURER MODE ----------
   if (isInsurer) {
-    const premiums = R('premiumsEarned', 'Premiums earned');
-    const claims = R('lossesIncurred', 'Claims incurred');
-    const lossRatio = ratioRows(claims, premiums, 'Loss ratio', periods);
+    // Insurance reserve balances are not incurred claims. The shared selector
+    // can accept both stocks and flows, so give it duration observations only
+    // for these explicitly named income-statement concepts. Preserve the
+    // ordinary anchors so its four-quarter TTM calculation remains available.
+    const insuranceTags = ['PremiumsEarnedNet', 'PolicyholderBenefitsAndClaimsIncurredNet', 'IncurredClaimsPropertyCasualtyInsurance'];
+    const durationFacts = { ...facts };
+    for (const taxonomy of ['us-gaap', 'ifrs-full']) {
+      if (!facts[taxonomy]) continue;
+      durationFacts[taxonomy] = { ...facts[taxonomy] };
+      for (const tag of insuranceTags) {
+        const concept = facts[taxonomy][tag];
+        if (concept) durationFacts[taxonomy][tag] = { ...concept,
+          units: { ...concept.units, USD: (concept.units?.USD || []).filter(point => point.start) } };
+      }
+    }
+    const insuranceFlow = (tags, label) => ({ label, values: periods.map(period => {
+      const point = selectFinancialFact(durationFacts, tags, period, 'USD');
+      const start = point?.observationPeriod?.start || point?.source?.start;
+      const end = point?.observationPeriod?.end || point?.source?.end;
+      const days = start ? (Date.parse(end) - Date.parse(start)) / 86400000 + 1 : 0;
+      return point && Number.isFinite(point.value) && end === period.end && days >= 300 && days <= 400
+        ? { ...point, period, label }
+        : { value: null, period, label };
+    }) });
+    const premiums = insuranceFlow(['PremiumsEarnedNet'], 'Premiums earned');
+    const claims = insuranceFlow(['PolicyholderBenefitsAndClaimsIncurredNet', 'IncurredClaimsPropertyCasualtyInsurance'], 'Claims and benefits incurred');
+    const ratio = ratioRows(claims, premiums, 'Claims and benefits / earned premiums', periods);
+    const lossRatio = { ...ratio, values: ratio.values.map((point, index) => {
+      const claim = claims.values[index], premium = premiums.values[index];
+      const context = value => value.observationPeriod || value.source || {};
+      const numerator = context(claim), denominator = context(premium);
+      // Actual duration boundaries must agree, even when both observations
+      // individually fit the selector's small reporting-calendar tolerance.
+      return numerator.start && numerator.start === denominator.start && numerator.end === denominator.end
+        ? point : { ...point, value: null };
+    }) };
     const equityToAssets = ratioRows(rows.equity, rows.totalAssets, 'Equity / assets', periods);
 
     metrics.push(
       makeMetric({
-        id: 'loss_ratio', label: 'Loss ratio (claims / premiums earned)', pillar: 'credit', format: 'pct',
-        row: lossRatio, periods, cik, bands: BANDS.lossRatio, invertDeltaGood: true,
-        why: 'The share of premium income consumed by policyholder claims \u2014 the core underwriting risk gauge. Sustained ratios near or above 100% mean underwriting losses covered only by investment income.',
+        id: 'loss_ratio', label: 'Claims and benefits / earned premiums', pillar: 'credit', format: 'pct',
+        row: lossRatio, periods, cik, bands: null,
+        why: 'Reported incurred claims or policyholder benefits divided by earned premiums for the same annual or trailing-twelve-month duration. This descriptive comparison excludes operating expenses and investment income. Life, health, property/casualty and mixed insurers have different benefit and premium scopes; this is not a combined ratio, underwriting-profit conclusion, reserve-adequacy test or statutory capital measure.',
         extraSources: sourcesOf(cik, latestPoint(claims), latestPoint(premiums)),
       }),
       makeMetric({

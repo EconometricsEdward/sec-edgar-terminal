@@ -52,7 +52,7 @@ const DIMENSIONS = {
     ['earnings', 'Earnings resilience', 'Read net revenue and earnings against funding costs and the risks in customer and trading balances.', ['net_margin', 'loss_years']],
   ],
   insurance: [
-    ['underwriting', 'Claims experience', 'How much earned premium is absorbed by reported claims?', ['loss_ratio']],
+    ['underwriting', 'Claims & benefit flows', 'What incurred claims or benefits are reported against the same earned-premium period?', ['loss_ratio']],
     ['capital', 'Capital support', 'What book equity supports policyholder and other obligations?', ['ins_equity_assets', 'liab_to_assets']],
     ['liquidity', 'Reported liquidity', 'What cash is disclosed, and what further funding evidence is needed?', ['cash_to_assets', 'current_ratio']],
     ['earnings', 'Earnings capacity', 'How are consolidated earnings changing across reporting periods?', ['net_margin', 'loss_years']],
@@ -198,7 +198,8 @@ function supportingObservations(metrics, balance, earnings, lens) {
     if (metric.id === 'net_margin' && v >= 0.1 && lens.id !== 'financial') add(metric, `Reported net income is ${displayed} of ${metric.revenueBasis === 'lease' ? 'reported lease revenue' : metric.revenueBasis === 'net-of-interest' ? 'net revenue after interest expense' : 'revenue'}; review recurring earnings and one-time items.`);
     if (metric.id === 'bank_equity_assets' && v >= 0.11) add(metric, `Book equity represents ${displayed} of total assets. Regulatory capital and risk-weighted assets are separate measures.`);
     if (metric.id === 'npl_ratio' && v >= 0 && v <= 0.005) add(metric, `Consolidated nonaccrual loans are ${displayed} of gross loans. Delinquencies and charge-offs add further credit-quality evidence.`);
-    if (metric.id === 'loss_ratio' && v >= 0 && v <= 0.65) add(metric, `Claims consumed ${displayed} of earned premiums. Operating expenses and reserve development are outside this ratio.`);
+    // Claims/premiums is contextual across different insurance products;
+    // a lower value is not automatically a financial strength.
   }
   if (!observations.length && earnings.netIncome.value > 0) observations.push({ id: 'positive-income', metricId: 'net_margin', label: 'Positive reported earnings', value: earnings.netIncome.value, format: 'usd', text: `Reported net income is ${formatRiskValue(earnings.netIncome.value)} for the selected period.`, reason: `Reported net income is ${formatRiskValue(earnings.netIncome.value)} for the selected period.`, sources: earnings.netIncome.sources });
   // Prefer distinct economic questions; do not inflate the list by repeating

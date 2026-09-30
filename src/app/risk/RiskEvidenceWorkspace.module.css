@@ -1,0 +1,16 @@
+.workspace { margin:34px 0; border:1px solid var(--r-line); background:var(--r-panel); border-radius:14px; overflow:hidden; scroll-margin-top:145px; }
+.heading { display:flex; justify-content:space-between; align-items:flex-start; gap:20px; padding:24px 26px; }
+.heading > div > span { color:var(--r-accent); font-size:12px; letter-spacing:1.2px; }
+.heading h2 { margin-top:8px; font-size:26px; font-weight:550; letter-spacing:-.6px; }
+.heading p { margin-top:8px; max-width:800px; font-size:14px; line-height:1.7; color:var(--r-muted); }
+.count { color:var(--r-muted); font-size:12px; white-space:nowrap; margin-top:7px; }
+.tabs { display:flex; gap:4px; flex-wrap:wrap; padding:0 19px; border-bottom:1px solid var(--r-line); }
+.tabs button { display:flex; align-items:center; gap:7px; color:var(--r-muted); font-size:14px; padding:13px 11px; border-bottom:2px solid transparent; background:transparent; }
+.tabs button[aria-selected=true] { border-color:var(--r-accent); color:var(--r-accent); }
+.scope { display:flex; align-items:baseline; flex-wrap:wrap; gap:7px 20px; padding:16px 26px; background:var(--r-tint); border-bottom:1px solid var(--r-line); }
+.scope span { color:var(--r-muted); font-size:12px; }
+.scope strong { font-size:14px; font-weight:500; }
+.scope p { width:100%; font-size:14px; line-height:1.7; color:var(--r-muted); }
+.panelBody > div > section { margin:0; border:0; border-radius:0; }
+.panelBody > div[hidden] { display:none; }
+@media(max-width:640px) { .heading { padding:20px; flex-wrap:wrap; gap:8px; } .heading h2 { font-size:23px; } .tabs { padding:0 11px; } .tabs button { padding:11px 8px; font-size:13px; } .scope { padding:15px 20px; } }

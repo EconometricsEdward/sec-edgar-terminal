@@ -54,7 +54,7 @@ export default function RiskIntelligence({ data, profile, onInspect, cftcEnabled
   </section>;
 }
 
-function MaturityEvidence({ data, financial }: { data: RiskData; financial: boolean }) {
+export function MaturityEvidence({ data, financial }: { data: RiskData; financial: boolean }) {
   const profile = data.refinancing;
   const view = maturityView(profile, data.generatedAt.slice(0, 10));
   const [selected, setSelected] = useState<string | null>(null);

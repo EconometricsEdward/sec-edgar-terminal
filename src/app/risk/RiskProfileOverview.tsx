@@ -2,16 +2,13 @@
 
 import { ArrowUpRight, CircleHelp } from 'lucide-react';
 import { useState, type ReactNode } from 'react';
-import dynamic from 'next/dynamic';
 import { buildRiskProfilePresentation } from './riskProfilePresentation.js';
 import { formatRiskValue } from '../../utils/riskWorkspace.js';
 import type { RiskData, RiskProfile } from './riskTypes';
 import s from './RiskProfileOverview.module.css';
-import RiskNoteEvidence from './RiskNoteEvidence';
 import RiskFundingStory from './RiskFundingStory';
 import ChartPeriodOverlay from '../../components/charts/ChartPeriodOverlay';
-import RiskIntelligence from './RiskIntelligence';
-const RiskProfileMarketContext = dynamic(() => import('./RiskProfileMarketContext'));
+import RiskEvidenceWorkspace, { type RiskEvidenceId } from './RiskEvidenceWorkspace';
 
 type Point = { end: string; value: number | null };
 const isNumber = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
@@ -81,7 +78,7 @@ function DimensionRow({ dimension: d, number, basis, reportingEnd, ticker, onIns
   </div>;
 }
 
-export default function RiskProfileOverview({ data, profile, onInspect, onExposures, metricExplorer, cftcEnabled = true, asOf = '' }: { data: RiskData; profile: RiskProfile; onInspect: (id: string, missing?: boolean) => void; onExposures?: () => void; metricExplorer?: ReactNode; cftcEnabled?: boolean; asOf?: string }) {
+export default function RiskProfileOverview({ data, profile, onInspect, onExposures, metricExplorer, evidenceSelection = 'maturities', onEvidence = () => {}, cftcEnabled = true, asOf = '' }: { data: RiskData; profile: RiskProfile; onInspect: (id: string, missing?: boolean) => void; onExposures?: () => void; metricExplorer?: ReactNode; evidenceSelection?: RiskEvidenceId; onEvidence?: (id: RiskEvidenceId) => void; cftcEnabled?: boolean; asOf?: string }) {
   const view = buildRiskProfilePresentation(profile, data);
   const { balance } = view;
   const bank = view.lens.id === 'bank';
@@ -89,7 +86,6 @@ export default function RiskProfileOverview({ data, profile, onInspect, onExposu
   const comparisonTitle = bank ? 'Net loans and deposits' : view.lens.id === 'corporate' ? 'Liquidity and borrowing' : 'Cash and total liabilities';
   const maxBalance = Math.max(...comparisons.map(row => isNumber(row.item.value) ? Math.max(0,row.item.value) : 0), 1);
   return <div className={s.profile}>
-    <RiskIntelligence key={`intelligence:${data.ticker}:${profile.basis}`} data={data} profile={profile} onInspect={onInspect} cftcEnabled={cftcEnabled}/>
     <section id="risk-financial-position" className={s.overview} aria-labelledby="risk-profile-title">
       <div className={s.dimensions}>
         <div className={s.sectionTop}><span className={s.kicker}>01 / {view.lens.label}</span><span>Company history, in view</span></div>
@@ -109,8 +105,7 @@ export default function RiskProfileOverview({ data, profile, onInspect, onExposu
 
     {metricExplorer}
     <RiskFundingStory key={`funding:${data.ticker}:${profile.basis}`} profile={profile} company={{ sic: data.sic, ticker: data.ticker }} onInspect={onInspect} />
-    <RiskNoteEvidence key={`notes:${data.ticker}:${profile.basis}`} ticker={data.ticker} basis={profile.basis} />
-    {cftcEnabled && <RiskProfileMarketContext key={`market:${data.ticker}:${profile.basis}:${asOf}`} ticker={data.ticker} companyName={data.companyName} basis={profile.basis === 'annual' ? 'annual' : 'ttm'} asOf={asOf} companyType={view.lens.id} />}
+    <RiskEvidenceWorkspace key={`evidence:${data.cik}`} data={data} profile={profile} selection={evidenceSelection} onSelect={onEvidence} cftcEnabled={cftcEnabled} asOf={asOf}/>
     {onExposures && <button className={s.moreExposures} onClick={onExposures}>Open the full business exposure map <ArrowUpRight size={15}/></button>}
     <div className={s.coverage}><CircleHelp size={17}/><div><button onClick={() => onInspect(profile.coverage.missing[0] || '', profile.coverage.missing.length > 0)}>{profile.coverage.available} of {profile.coverage.total} available metrics · {profile.coverage.missing.length} data gaps<ArrowUpRight size={13}/></button>{view.limitations.map(note => <p key={note}>{note}</p>)}</div></div>
   </div>;
