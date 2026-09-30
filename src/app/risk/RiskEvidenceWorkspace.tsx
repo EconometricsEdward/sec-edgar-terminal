@@ -30,6 +30,7 @@ export default function RiskEvidenceWorkspace({data,profile,selection,onSelect,c
   useEffect(() => { setVisited(previous => previous.includes(active.id) ? previous : [...previous,active.id]); },[active.id]);
   const mounted = (id:RiskEvidenceId) => active.id === id || visited.includes(id);
   const title = active.id === 'markets' && !cftcEnabled ? 'Funding markets' : active.label;
+  const source = active.id === 'markets' && !cftcEnabled ? 'New York Fed · DTCC references' : active.source;
   function navigateSource(event: React.KeyboardEvent<HTMLButtonElement>, index: number) {
     const key = event.key;
     if (!['ArrowLeft','ArrowRight','Home','End'].includes(key)) return;
@@ -40,9 +41,9 @@ export default function RiskEvidenceWorkspace({data,profile,selection,onSelect,c
   }
 
   return <section id="risk-connected-evidence" className={s.workspace} aria-label="Connected risk evidence">
-    <header className={s.heading}><div><span>CONNECTED EVIDENCE</span><h2>Follow the source.</h2><p>Open the evidence that answers your next question. Each source keeps its own entity, reporting date and coverage.</p></div><span className={s.count}>{choices.length} research paths</span></header>
+    <header className={s.heading}><div><span>CONNECTED EVIDENCE</span><h2>Source workspace</h2></div><span className={s.count}>{choices.length} sources</span></header>
     <div className={s.tabs} role="tablist" aria-label="Supporting risk sources">{choices.map((item,index) => <button key={item.id} id={'risk-source-tab-'+item.id} role="tab" tabIndex={active.id === item.id ? 0 : -1} onKeyDown={event=>navigateSource(event,index)} aria-selected={active.id === item.id} aria-controls={'risk-source-panel-'+item.id} onClick={()=>onSelect(item.id)}><item.Icon size={16}/>{item.id === 'markets' && !cftcEnabled ? 'Funding markets' : item.label}</button>)}</div>
-    <div className={s.scope}><span>{active.source}</span><strong>{title}</strong><p>{active.description}</p></div>
+    <div className={s.scope}><span className={s.sourceChip}>{source}</span><details key={active.id} className={s.scopeDetails}><summary>Scope & coverage</summary><strong>{title}</strong><p>{active.id === 'markets' && !cftcEnabled ? 'Prepared funding rates and Treasury settlement fails. DTCC charts open at the publisher.' : active.description}</p><p>Each source keeps its own entity, reporting date and coverage.</p></details></div>
     <div className={s.panelBody}>
       {mounted('maturities') && <div role="tabpanel" id="risk-source-panel-maturities" aria-labelledby="risk-source-tab-maturities" hidden={active.id !== 'maturities'}><MaturityEvidence key={data.cik} data={data} financial={companyType !== 'corporate'}/></div>}
       {mounted('notes') && <div role="tabpanel" id="risk-source-panel-notes" aria-labelledby="risk-source-tab-notes" hidden={active.id !== 'notes'}><RiskNoteEvidence key={data.ticker+':'+profile.basis+':'+asOf} ticker={data.ticker} basis={profile.basis} asOf={asOf}/></div>}

@@ -115,7 +115,7 @@ export default function RiskClient({ initialTicker = '', initialView = 'overview
 
   return <div className={s.page} data-exposures={isExposures || undefined}>
     <header className={s.pageHeader}>
-      <div><div className={s.eyebrow}><ShieldCheck size={15} /> Company risk research</div><h1>{isFcm ? 'Futures broker capital.' : isExposures ? 'Business exposures.' : 'Company risk.'}</h1><p>{isFcm ? 'Capital and customer funds, at the legal entity level.' : isExposures ? 'Revenue, funding, counterparties and the markets that connect them.' : 'Follow the business model, financial evidence and sources of pressure.'}</p></div>
+      <div><div className={s.eyebrow}><ShieldCheck size={15} /> Company risk research</div><h1>{isFcm ? 'Futures broker capital.' : isExposures ? 'Business exposures.' : 'Company risk'}</h1><p>{isFcm ? 'Capital and customer funds, at the legal entity level.' : isExposures ? 'Revenue, funding, counterparties and the markets that connect them.' : 'Metrics, trends and source evidence.'}</p></div>
       {!isFcm && <form className={s.search} onSubmit={e => { e.preventDefault(); search(input); }}>
         <label htmlFor="risk-ticker">Explore a company</label><div><Search size={17} /><input id="risk-ticker" value={input} onChange={e => setInput(e.target.value)} placeholder="Enter ticker, e.g. BAC" maxLength={12} autoComplete="off" spellCheck={false} /><button type="submit" disabled={!input.trim()} aria-label="Load risk profile"><ArrowRight size={18} /></button></div>
       </form>}
@@ -141,11 +141,11 @@ export default function RiskClient({ initialTicker = '', initialView = 'overview
       <RiskWorkbench key={`briefing:${visibleData.ticker}:${basis}`} data={visibleData} profile={profile} onInspect={inspect} onEvidence={openEvidence} onExposures={() => changeTab('exposures')} onFcm={() => changeTab('fcm')} cftcEnabled={cftcEnabled}/>
       <RiskProfileOverview data={visibleData} profile={profile} onInspect={inspect} evidenceSelection={evidenceSelection} onEvidence={openEvidence} cftcEnabled={cftcEnabled} asOf={exposureAsOf} onExposures={() => changeTab('exposures')} metricExplorer={
         <div ref={explorerRef} className={s.workspace}>
-          <div className={s.explorerHeading}><div><div className={s.eyebrow}>Inspect the numbers</div><h2>Inspect a metric, period by period.</h2></div><button className={s.button} aria-expanded={explorerOpen} aria-controls="risk-metric-evidence" onClick={() => setExplorerOpen(!explorerOpen)}>{explorerOpen ? 'Close metric explorer' : 'Explore all metrics'}<Compass size={16}/></button></div>
+          <div className={s.explorerHeading}><div><h2>Metric explorer</h2></div><button className={s.button} aria-expanded={explorerOpen} aria-controls="risk-metric-evidence" onClick={() => setExplorerOpen(!explorerOpen)}>{explorerOpen ? 'Close explorer' : 'All metrics'}<Compass size={16}/></button></div>
           {explorerOpen && <div id="risk-metric-evidence"><MetricExplorer key={`${visibleData.ticker}:${basis}:${inspectVersion}`} data={visibleData} profile={profile} selected={selected} onSelect={setSelected} pillar={pillar} onPillar={setPillar} onlyMissing={onlyMissing} onOnlyMissing={setOnlyMissing} /></div>}
         </div>
       } />
-      <footer className={s.footer}><ShieldCheck size={16}/><p>Sources retain their own reporting dates and entity scopes. Screens are research prompts, not credit ratings or default probabilities. Missing figures are not treated as zero. The profile export covers SEC financial measures; supplementary sources link to their own evidence. The export includes the business-model research questions and source gaps. <a href={`/api/risk?ticker=${encodeURIComponent(visibleData.ticker)}&v=${RISK_VERSION}&evidence=1`} target="_blank" rel="noreferrer">View SEC profile data</a></p></footer>
+      <footer className={s.footer}><ShieldCheck size={16}/><details><summary>Sources & scope</summary><p>Sources retain their own reporting dates and entity scopes. Screens are research prompts, not credit ratings or default probabilities. Missing figures are not treated as zero. The profile export covers SEC financial measures; supplementary sources link to their own evidence. The export includes the business-model research questions and source gaps. <a href={`/api/risk?ticker=${encodeURIComponent(visibleData.ticker)}&v=${RISK_VERSION}&evidence=1`} target="_blank" rel="noreferrer">View SEC profile data</a></p></details></footer>
     </>}
   </div>;
 }

@@ -300,3 +300,19 @@
 .riskLanding { gap:60px; padding-top:28px; }
 :global(#risk-financial-position) { scroll-margin-top:150px; }
 @media(max-width:640px) { .riskLanding { gap:32px; } .workflowBar { flex-wrap:wrap; gap:8px; padding-bottom:10px; } .workflowBar .tabs { gap:20px; } }
+
+/* Compact frame: leave the first screen to company measures and charts. */
+.page { padding-top:16px; }
+.page .pageHeader { padding:8px 0; margin-bottom:10px; }
+.page .pageHeader h1 { font-size:clamp(28px,3vw,36px); margin:5px 0; }
+.page .pageHeader p { font-size:13px; }
+.workflowBar { min-height:44px; margin-bottom:17px; }
+.workflowBar .tabs button { font-size:13px; padding-top:12px; padding-bottom:12px; }
+.page .companyIdentity h2 { font-size:19px; }
+.page .companyIdentity p { font-size:12px; }
+.page .freshness { font-size:11px; margin:10px 0 12px; gap:5px 14px; }
+.explorerHeading { padding:16px 20px; }
+.explorerHeading h2 { font-size:20px; margin:0; }
+.footer summary { cursor:pointer; font-size:12px; }
+.footer p { margin-top:9px; }
+@media(max-width:760px) { .page .pageHeader h1 { font-size:29px; } .page .pageHeader { gap:12px; } .page .companyIdentity h2 { font-size:17px; } .explorerHeading { flex-direction:row; align-items:center; padding:14px; } .explorerHeading h2 { font-size:18px; } }
