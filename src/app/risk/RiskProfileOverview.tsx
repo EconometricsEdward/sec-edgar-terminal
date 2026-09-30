@@ -10,6 +10,7 @@ import s from './RiskProfileOverview.module.css';
 import RiskNoteEvidence from './RiskNoteEvidence';
 import RiskFundingStory from './RiskFundingStory';
 import ChartPeriodOverlay from '../../components/charts/ChartPeriodOverlay';
+import RiskIntelligence from './RiskIntelligence';
 const RiskProfileMarketContext = dynamic(() => import('./RiskProfileMarketContext'));
 
 type Point = { end: string; value: number | null };
@@ -88,6 +89,7 @@ export default function RiskProfileOverview({ data, profile, onInspect, onExposu
   const comparisonTitle = bank ? 'Net loans and deposits' : view.lens.id === 'corporate' ? 'Liquidity and borrowing' : 'Cash and total liabilities';
   const maxBalance = Math.max(...comparisons.map(row => isNumber(row.item.value) ? Math.max(0,row.item.value) : 0), 1);
   return <div className={s.profile}>
+    <RiskIntelligence key={`intelligence:${data.ticker}:${profile.basis}`} data={data} profile={profile} onInspect={onInspect} cftcEnabled={cftcEnabled}/>
     <section className={s.overview} aria-labelledby="risk-profile-title">
       <div className={s.dimensions}>
         <div className={s.sectionTop}><span className={s.kicker}>01 / {view.lens.label}</span><span>Company history, in view</span></div>

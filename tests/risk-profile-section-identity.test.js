@@ -19,7 +19,7 @@ new Function('require', 'module', 'exports', compiled)(name => {
   if (name === '../../utils/riskWorkspace.js') return workspace;
   if (name === 'next/dynamic') return { __esModule: true, default: () => section('market').default };
   if (name.endsWith('.css')) return { __esModule: true, default: {} };
-  if (name === './RiskFundingStory' || name === './RiskNoteEvidence' || name.endsWith('ChartPeriodOverlay')) return section(name);
+  if (name === './RiskFundingStory' || name === './RiskNoteEvidence' || name === './RiskIntelligence' || name.endsWith('ChartPeriodOverlay')) return section(name);
   return require(name);
 }, testModule, testModule.exports);
 const Overview = testModule.exports.default;
@@ -38,12 +38,12 @@ test('stateful Risk sections have distinct sibling identities when the company o
   const states = [['AAPL', 'ttm'], ['AAPL', 'annual'], ['JPM', 'ttm']];
   const snapshots = states.map(([ticker, basis]) => {
     const keys = sectionKeys(ticker, basis);
-    assert.equal(keys.length, 3);
+    assert.equal(keys.length, 4);
     assert.equal(new Set(keys).size, keys.length, `${ticker}/${basis}: duplicate keys can leave the old funding history mounted`);
     return keys;
   });
   assert.equal(new Set(snapshots.flat()).size, snapshots.flat().length, 'each section resets its inspection state for a different company or basis');
   const withoutMarket = sectionKeys('AAPL', 'ttm', false);
-  assert.equal(withoutMarket.length, 2);
+  assert.equal(withoutMarket.length, 3);
   assert.equal(new Set(withoutMarket).size, withoutMarket.length);
 });

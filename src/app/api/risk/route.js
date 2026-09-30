@@ -11,6 +11,8 @@ import { prepareRiskProfileSources } from '../../../utils/riskProfileSources.js'
 import { readBoundedFilingResponse } from '../../../utils/filingsReader.js';
 import { RISK_NOTE_MAX_BYTES } from '../../../utils/riskNoteFacts.js';
 import { riskProfileCachePolicy } from '../../../utils/riskProfileCache.js';
+import { extractRefinancingProfile } from '../../../utils/refinancing/maturities.js';
+import { compactRefinancingProfile } from '../../../utils/refinancing/projection.js';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
@@ -59,11 +61,14 @@ export async function GET(request) {
   const rl = await checkRateLimit({ key: `rl:risk:${getClientIp(request)}`, windowMs: 60000, max: 20 });
   if (!rl.allowed) return rateLimitedResponse(rl);
   const scanOnly = params.get('include') === 'disclosures';
+  const includeMaturities = params.get('evidence') === '1';
   const profileResponse = (data) => response(riskResponseForVersion(data, params.get('v')));
   try {
     if (!scanOnly) {
       const cached = await warmGet(RISK_VERSION, ticker);
-      if (cached) return profileResponse(cached);
+      // Additive evidence reuses the approved, bounded Risk cache family.
+      // Older entries upgrade once in place; no new storage namespace/job.
+      if (cached && (!includeMaturities || Object.hasOwn(cached, 'refinancing'))) return profileResponse(cached);
     }
     const entry = await getOperatingTicker(ticker);
     if (!entry) return NextResponse.json({ error: `No SEC operating company matched ${ticker}. Fund tickers are covered on the Funds page.` }, { status: 404 });
@@ -83,7 +88,11 @@ export async function GET(request) {
     const annual = decorateRiskProfile(assessRisk(prepared.facts, submissions.sic, cik));
     const current = decorateRiskProfile(assessRisk(prepared.facts, submissions.sic, cik, { basis: 'ttm' }));
     const data = { ticker, cik, companyName: submissions.name || entry.name, sic: submissions.sic, sicDescription: submissions.sicDescription,
-      annual, current, sourceCoverage: prepared.sourceCoverage, version: RISK_VERSION, generatedAt: new Date().toISOString() };
+      annual, current, sourceCoverage: prepared.sourceCoverage,
+      // Reuse this request's original registrant facts. Never mix predecessor
+      // maturities into a successor schedule or read the 5,000-issuer atlas.
+      refinancing: compactRefinancingProfile(extractRefinancingProfile(company, { cik, sic: submissions.sic, financialInstitution: current.industry.isFinancial })),
+      version: RISK_VERSION, generatedAt: new Date().toISOString() };
     await warmSet(RISK_VERSION, ticker, data, riskProfileCachePolicy(data).ttlSeconds);
     return profileResponse(data);
   } catch (error) {

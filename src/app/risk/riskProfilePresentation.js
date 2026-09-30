@@ -259,6 +259,16 @@ export function riskProfileBrief(data, profile) {
     for (const source of metric.sources) lines.push(`  Source: ${source.label || source.tag}: ${source.value ?? 'Unavailable'} ${source.unit || ''}; ${source.start ? source.start + ' to ' : ''}${source.end || 'Undated'}; ${source.documentUrl || source.url || 'Source link unavailable'}`);
   }
   lines.push('', ...funding.limitations.map(item => `- ${item}`));
+  const maturities = data.refinancing;
+  lines.push('', '## Debt maturity schedule');
+  if (maturities?.status === 'ready') {
+    lines.push(`Schedule date: ${maturities.asOf}; ${maturities.form} filed ${maturities.filedAt}`,
+      `Coverage: ${maturities.coverage.reportedBuckets} of 6 buckets`, `Source: ${maturities.sourceUrl}`);
+    for (const bucket of maturities.buckets) lines.push(`- ${bucket.label}: ${formatRiskValue(bucket.value)}; ${bucket.startDate} to ${bucket.endDate || 'onward'}; ${bucket.tag}`);
+    lines.push(...maturities.warnings.map(note => `- ${note}`));
+  } else lines.push('No supported annual maturity schedule in available standard tags. Missing coverage does not establish zero debt.');
+  lines.push('', '## Related risk research', `Bank legal entities: /analysis/banks`, 'Funding conditions: /market/funding',
+    'CFTC swaps market: /market/derivatives', 'Market observations and bank reports retain their own dates and scope; they are not consolidated-company risk measures.');
   lines.push('', '## Scope', 'These are reported financial observations and transparent screening conventions, not credit ratings or default probabilities.', ...view.limitations.map((item) => `- ${item}`));
   if (data.sourceCoverage?.notices?.length) lines.push('', '## Reporting sources and coverage', ...data.sourceCoverage.notices.map((notice) => `- ${notice}`));
   if (data.sourceCoverage?.continuity?.sourceUrl) lines.push(`Company history source: ${data.sourceCoverage.continuity.sourceUrl}`);

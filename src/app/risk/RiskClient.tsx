@@ -43,7 +43,7 @@ export default function RiskClient({ initialTicker = '', initialView = 'overview
     }
     const controller = new AbortController();
     setLoading(true); setError(''); setData(null); setExported(false); setExplorerOpen(false);
-    fetch(`/api/risk?ticker=${encodeURIComponent(query)}&v=${RISK_VERSION}`, { signal: controller.signal })
+    fetch(`/api/risk?ticker=${encodeURIComponent(query)}&v=${RISK_VERSION}&evidence=1`, { signal: controller.signal })
       .then(async res => { const body = await res.json(); if (!res.ok) throw new Error(body.error || 'Could not load the risk profile.'); return body; })
       .then((body: RiskData) => {
         if (controller.signal.aborted) return;
@@ -88,13 +88,13 @@ export default function RiskClient({ initialTicker = '', initialView = 'overview
 
   return <div className={s.page} data-exposures={isExposures || undefined}>
     <header className={s.pageHeader}>
-      <div><div className={s.eyebrow}><ShieldCheck size={15} /> Company risk research</div><h1>{isFcm ? 'Futures broker capital.' : isExposures ? 'Business exposures.' : 'Risk, in perspective.'}</h1><p>{isFcm ? 'Capital and customer funds, at the legal entity level.' : isExposures ? 'Revenue, funding, counterparties and the markets that connect them.' : 'Capital. Cash. Business exposures. See how the pieces connect.'}</p></div>
+      <div><div className={s.eyebrow}><ShieldCheck size={15} /> Company risk research</div><h1>{isFcm ? 'Futures broker capital.' : isExposures ? 'Business exposures.' : 'Risk, in perspective.'}</h1><p>{isFcm ? 'Capital and customer funds, at the legal entity level.' : isExposures ? 'Revenue, funding, counterparties and the markets that connect them.' : 'Financial strength, debt maturities, bank reports and funding conditions.'}</p></div>
       {!isFcm && <form className={s.search} onSubmit={e => { e.preventDefault(); search(input); }}>
         <label htmlFor="risk-ticker">Explore a company</label><div><Search size={17} /><input id="risk-ticker" value={input} onChange={e => setInput(e.target.value)} placeholder="Enter ticker, e.g. BAC" maxLength={12} autoComplete="off" spellCheck={false} /><button type="submit" disabled={!input.trim()} aria-label="Load risk profile"><ArrowRight size={18} /></button></div>
       </form>}
     </header>
     <div className={s.workflowBar}>
-      {!isFcm && query ? <nav className={s.tabs} aria-label="Risk workspace sections">{TABS.filter(([id]) => cftcEnabled || id === 'overview').map(([id,label,Icon], index) => <button key={id} aria-current={tab === id ? 'page' : undefined} onClick={() => changeTab(id)}><span className={s.tabNumber}>0{index + 1}</span><Icon size={16}/>{label}</button>)}</nav> : <span className={s.toolLabel}>SEC filings{cftcEnabled && ' + CFTC reports'} · Source-linked research</span>}
+      {!isFcm && query ? <nav className={s.tabs} aria-label="Risk workspace sections">{TABS.filter(([id]) => cftcEnabled || id === 'overview').map(([id,label,Icon], index) => <button key={id} aria-current={tab === id ? 'page' : undefined} onClick={() => changeTab(id)}><span className={s.tabNumber}>0{index + 1}</span><Icon size={16}/>{label}</button>)}</nav> : <span className={s.toolLabel}>SEC · FFIEC · New York Fed{cftcEnabled && ' · CFTC'} · Source-linked research</span>}
       {cftcEnabled && <button className={s.textButton} onClick={() => changeTab(isFcm ? 'overview' : 'fcm')}><Building2 size={14}/>{isFcm ? 'Back to company risk' : 'Futures broker capital'}<ArrowUpRight size={13}/></button>}
     </div>
     {isFcm && <FcmCapitalPanel initialEntity={initialEntity} />}
@@ -102,8 +102,8 @@ export default function RiskClient({ initialTicker = '', initialView = 'overview
     {!independent && loading && <div className={s.loading} role="status"><Loader2 className={s.spin} size={24} /><h2>Reading {query}’s financial position</h2><p>Matching reporting periods and tracing SEC source inputs.</p><div className={s.skeletons}>{[1,2,3,4].map(n => <span key={n} />)}</div></div>}
     {!independent && error && <div className={s.empty} role="alert"><CircleAlert /><h2>We couldn’t load this company</h2><p>{error}</p><button className={s.button} onClick={() => setRetry(n => n + 1)}>Try again</button></div>}
     {!isFcm && !query && <section className={s.riskLanding}>
-      <div><div className={s.eyebrow}>Start with the business</div><h2>What supports it?<br/><span>What could strain it?</span></h2><p>Follow a company’s ability to absorb losses, meet obligations, and generate cash. Then connect its disclosed business exposures to the wider market.</p><div className={s.exampleCompanies}>{[['BAC','Banking'],['AAPL','Technology'],['XOM','Energy'],['MET','Insurance']].map(([ticker,sector]) => <Link key={ticker} prefetch={false} href={`/risk?ticker=${ticker}`}><strong>{ticker}</strong><span>{sector}</span><ArrowUpRight size={16}/></Link>)}</div></div>
-      <ol className={s.researchSteps}><li><ShieldCheck/><div><span>01 / FINANCIAL POSITION</span><h3>The company Risk Profile</h3><p>Capital and funding, cash generation and earnings. Current figures alongside the company’s own history.</p></div></li><li><Network/><div><span>02 / BUSINESS EXPOSURES</span><h3>Follow the economic connection</h3><p>Explore revenue and funding concentrations, counterparties, fund holdings and relevant CFTC market comparisons.</p></div></li></ol>
+      <div><div className={s.eyebrow}>Start with the business</div><h2>What supports it?<br/><span>What could strain it?</span></h2><p>Move from reported financial strength to the obligations ahead. Connect SEC evidence with bank regulatory reports, funding markets and disclosed business exposures.</p><div className={s.exampleCompanies}>{[['JPM','Banking'],['AAPL','Technology'],['XOM','Energy'],['MET','Insurance'],['IBKR','Broker-dealer'],['F','Manufacturing']].map(([ticker,sector]) => <Link key={ticker} prefetch={false} href={`/risk?ticker=${ticker}`}><strong>{ticker}</strong><span>{sector}</span><ArrowUpRight size={16}/></Link>)}</div></div>
+      <ol className={s.researchSteps}><li><ShieldCheck/><div><span>01 / FINANCIAL CAPACITY</span><h3>Strength, changes, and evidence</h3><p>A concise risk briefing, comparable period changes and interactive financial trends, tailored to the company’s business.</p></div></li><li><Building2/><div><span>02 / OBLIGATIONS & FUNDING</span><h3>See what comes due</h3><p>Explore reported debt maturities, legal-bank capital and loan quality, secured funding rates and derivatives markets.</p></div></li><li><Network/><div><span>03 / BUSINESS EXPOSURES</span><h3>Follow the economic connection</h3><p>Revenue and funding concentrations, counterparties, fund holdings and relevant CFTC positioning, with source evidence.</p></div></li></ol>
     </section>}
     {!independent && visibleData && profile && <>
       <section className={s.company} aria-label="Company and reporting basis">
@@ -120,7 +120,7 @@ export default function RiskClient({ initialTicker = '', initialView = 'overview
           {explorerOpen && <div id="risk-metric-evidence"><MetricExplorer key={`${visibleData.ticker}:${basis}:${inspectVersion}`} data={visibleData} profile={profile} selected={selected} onSelect={setSelected} pillar={pillar} onPillar={setPillar} onlyMissing={onlyMissing} onOnlyMissing={setOnlyMissing} /></div>}
         </div>
       } />
-      <footer className={s.footer}><ShieldCheck size={16}/><p>SEC financial statements describe reported conditions. Screens are research prompts, not credit ratings or default probabilities. Missing figures are not treated as zero. <a href={`/api/risk?ticker=${encodeURIComponent(visibleData.ticker)}&v=${RISK_VERSION}`} target="_blank" rel="noreferrer">View source data</a></p></footer>
+      <footer className={s.footer}><ShieldCheck size={16}/><p>SEC financial statements describe reported conditions. Screens are research prompts, not credit ratings or default probabilities. Missing figures are not treated as zero. <a href={`/api/risk?ticker=${encodeURIComponent(visibleData.ticker)}&v=${RISK_VERSION}&evidence=1`} target="_blank" rel="noreferrer">View source data</a></p></footer>
     </>}
   </div>;
 }
