@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { Building2, Search } from 'lucide-react';
 import { readRiskEvidence } from './riskEvidenceClient.js';
@@ -14,6 +14,7 @@ export default function RiskBankEvidence({ companyName, ticker, companyPeriod }:
   const [query, setQuery] = useState(suggestion.length >= 2 ? suggestion : '');
   const [directory, setDirectory] = useState<any>(null), [directoryError, setDirectoryError] = useState('');
   const [rssd, setRssd] = useState(''), [data, setData] = useState<any>(null), [error, setError] = useState('');
+  const periodAtOpen = useRef(companyPeriod);
   const [retry, setRetry] = useState(0), [period, setPeriod] = useState('');
   useEffect(() => {
     let active = true; setDirectory(null); setDirectoryError('');
@@ -32,10 +33,10 @@ export default function RiskBankEvidence({ companyName, ticker, companyPeriod }:
       if (!active) return;
       setData(result);
       const dates = result.reportingPeriods.map((row: any) => row.date);
-      setPeriod(dates.includes(companyPeriod) ? companyPeriod : dates.at(-1) || '');
+      setPeriod(previous => dates.includes(previous) ? previous : dates.includes(periodAtOpen.current) ? periodAtOpen.current : dates.at(-1) || '');
     }).catch(cause => { if (active) setError(cause.message); });
     return () => { active = false; };
-  }, [rssd, retry, companyPeriod]);
+  }, [rssd, retry]);
   const bank = data?.bank;
   const dates: string[] = data?.reportingPeriods?.map((row: any) => row.date) || [];
   const report = data?.reportingPeriods?.find((row: any) => row.date === period);

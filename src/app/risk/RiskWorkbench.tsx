@@ -48,7 +48,7 @@ function DriverHistory({ metric, basis }: { metric: Measure; basis: string }) {
 
 export default function RiskWorkbench({ data, profile, onInspect, onEvidence, onExposures, onFcm, cftcEnabled }: { data: RiskData; profile: RiskProfile; onInspect: (id: string, missing?: boolean) => void; onEvidence: (id: EvidenceId) => void; onExposures?: () => void; onFcm?: () => void; cftcEnabled: boolean }) {
   const model = useMemo(() => buildRiskResearchModel(profile, data), [profile, data]);
-  const [mode,setMode] = useState('drivers'), [driverId,setDriverId] = useState(model.drivers[0]?.id || '');
+  const [mode,setMode] = useState('drivers'), [driverId,setDriverId] = useState(() => model.drivers.find(driver => driver.metrics.some(metric => finite(metric.value)))?.id || model.drivers[0]?.id || '');
   const [measureId,setMeasureId] = useState('');
   const driver = model.drivers.find(d => d.id === driverId) || model.drivers[0];
   const metrics: Measure[] = driver?.metrics || [];

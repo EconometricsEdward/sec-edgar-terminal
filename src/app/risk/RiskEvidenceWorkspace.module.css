@@ -11,6 +11,7 @@
 .scope span { color:var(--r-muted); font-size:12px; }
 .scope strong { font-size:14px; font-weight:500; }
 .scope p { width:100%; font-size:14px; line-height:1.7; color:var(--r-muted); }
-.panelBody > div > section { margin:0; border:0; border-radius:0; }
+.panelBody > div { padding:24px 26px; }
+.panelBody > div > section { padding:0; margin:0; border:0; border-radius:0; }
 .panelBody > div[hidden] { display:none; }
-@media(max-width:640px) { .heading { padding:20px; flex-wrap:wrap; gap:8px; } .heading h2 { font-size:23px; } .tabs { padding:0 11px; } .tabs button { padding:11px 8px; font-size:13px; } .scope { padding:15px 20px; } }
+@media(max-width:640px) { .panelBody > div { padding:20px; } .heading { padding:20px; flex-wrap:wrap; gap:8px; } .heading h2 { font-size:23px; } .tabs { padding:0 11px; } .tabs button { padding:11px 8px; font-size:13px; } .scope { padding:15px 20px; } }
