@@ -26,7 +26,7 @@ const Overview = testModule.exports.default;
 
 function sectionKeys(ticker, basis, cftcEnabled = true) {
   const tree = Overview({
-    data: { ticker, sic: 3571 },
+    data: { ticker, cik: ticker === 'AAPL' ? '0000320193' : '0000019617', sic: 3571 },
     profile: { basis, periods: [], metrics: [], industry: {}, coverage: { available: 0, total: 0, missing: [] } },
     cftcEnabled,
     onInspect: () => {},
@@ -38,12 +38,17 @@ test('stateful Risk sections have distinct sibling identities when the company o
   const states = [['AAPL', 'ttm'], ['AAPL', 'annual'], ['JPM', 'ttm']];
   const snapshots = states.map(([ticker, basis]) => {
     const keys = sectionKeys(ticker, basis);
-    assert.equal(keys.length, 3);
+    assert.equal(keys.length, 4);
     assert.equal(new Set(keys).size, keys.length, `${ticker}/${basis}: duplicate keys can leave the old funding history mounted`);
-    return keys;
+    // Annual maturity evidence intentionally survives an annual/TTM toggle;
+    // its source does not depend on the financial-profile basis.
+    return keys.filter(key => !key.startsWith('maturities:'));
   });
   assert.equal(new Set(snapshots.flat()).size, snapshots.flat().length, 'each section resets its inspection state for a different company or basis');
   const withoutMarket = sectionKeys('AAPL', 'ttm', false);
-  assert.equal(withoutMarket.length, 2);
+  assert.equal(withoutMarket.length, 3);
   assert.equal(new Set(withoutMarket).size, withoutMarket.length);
+  const maturityKey = (ticker, basis) => sectionKeys(ticker, basis).find(key => key.startsWith('maturities:'));
+  assert.equal(maturityKey('AAPL', 'ttm'), maturityKey('AAPL', 'annual'));
+  assert.notEqual(maturityKey('AAPL', 'ttm'), maturityKey('JPM', 'ttm'));
 });

@@ -11,6 +11,9 @@ import RiskNoteEvidence from './RiskNoteEvidence';
 import RiskFundingStory from './RiskFundingStory';
 import ChartPeriodOverlay from '../../components/charts/ChartPeriodOverlay';
 const RiskProfileMarketContext = dynamic(() => import('./RiskProfileMarketContext'));
+const MaturityEvidence = dynamic(() => import('./RiskEvidencePanels').then(m => m.MaturityEvidence));
+const BankEvidence = dynamic(() => import('./RiskEvidencePanels').then(m => m.BankEvidence));
+const MarketEvidence = dynamic(() => import('./RiskEvidencePanels').then(m => m.MarketEvidence));
 
 type Point = { end: string; value: number | null };
 const isNumber = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
@@ -88,7 +91,7 @@ export default function RiskProfileOverview({ data, profile, onInspect, onExposu
   const comparisonTitle = bank ? 'Net loans and deposits' : view.lens.id === 'corporate' ? 'Liquidity and borrowing' : 'Cash and total liabilities';
   const maxBalance = Math.max(...comparisons.map(row => isNumber(row.item.value) ? Math.max(0,row.item.value) : 0), 1);
   return <div className={s.profile}>
-    <section className={s.overview} aria-labelledby="risk-profile-title">
+    <section id="risk-financial-position" className={s.overview} aria-labelledby="risk-profile-title">
       <div className={s.dimensions}>
         <div className={s.sectionTop}><span className={s.kicker}>01 / {view.lens.label}</span><span>Company history, in view</span></div>
         <h2 id="risk-profile-title">The financial shape of {data.ticker}.</h2><p className={s.description}>{view.lens.description}</p>
@@ -106,9 +109,12 @@ export default function RiskProfileOverview({ data, profile, onInspect, onExposu
     </section>
 
     {metricExplorer}
+    <MaturityEvidence key={`maturities:${data.cik}`} cik={data.cik} ticker={data.ticker} profileDate={profile.periods[0]?.end} financial={profile.industry.isFinancial}/>
+    {bank && <BankEvidence key={`bank:${data.cik}`} companyName={data.companyName}/>}
     <RiskFundingStory key={`funding:${data.ticker}:${profile.basis}`} profile={profile} company={{ sic: data.sic, ticker: data.ticker }} onInspect={onInspect} />
     <RiskNoteEvidence key={`notes:${data.ticker}:${profile.basis}`} ticker={data.ticker} basis={profile.basis} />
     {cftcEnabled && <RiskProfileMarketContext key={`market:${data.ticker}:${profile.basis}:${asOf}`} ticker={data.ticker} companyName={data.companyName} basis={profile.basis === 'annual' ? 'annual' : 'ttm'} asOf={asOf} companyType={view.lens.id} />}
+    <MarketEvidence cftcEnabled={cftcEnabled}/>
     {onExposures && <button className={s.moreExposures} onClick={onExposures}>Open the full business exposure map <ArrowUpRight size={15}/></button>}
     <div className={s.coverage}><CircleHelp size={17}/><div><button onClick={() => onInspect(profile.coverage.missing[0] || '', profile.coverage.missing.length > 0)}>{profile.coverage.available} of {profile.coverage.total} available metrics · {profile.coverage.missing.length} data gaps<ArrowUpRight size={13}/></button>{view.limitations.map(note => <p key={note}>{note}</p>)}</div></div>
   </div>;
