@@ -53,6 +53,23 @@ test('CBLR reporting preserves the election and leverage ratio while risk-based 
   }
   assert.equal(result.metrics.find(m=>m.key==='leverage_ratio').value,10);
 });
+test('031 uses the RCOA CBLR election despite its RCFA/RCFW capital amounts',()=>{
+  // Official FFIEC 031 (June 2026), RC-R I 31.a, page 63: RCOALE74.
+  const parsed=parseCallXbrl(fixture('031',true),{rssd:101,reportDate:date});
+  delete parsed.facts.RCFWP859; // One applicable CET1 column, not both.
+  const result=normalizeBankReport(parsed,{form:'031'});
+  assert.equal(result.capitalFramework,'CBLR');
+  assert.equal(result.validation.passed,true);
+  assert.equal(result.metrics.find(m=>m.key==='rwa').reason,'not_required_under_cblr');
+  assert.equal(result.metrics.find(m=>m.key==='rwa').frameworkLineage[0].code,'RCOALE74');
+  assert.equal(result.metrics.find(m=>m.key==='leverage_ratio').value,10);
+  // Neither a wrong-prefix fact nor an invalid election unit can excuse omissions.
+  parsed.facts.RCFALE74=parsed.facts.RCOALE74;
+  delete parsed.facts.RCOALE74;
+  assert.equal(normalizeBankReport(parsed,{form:'031'}).validation.passed,false);
+  parsed.facts.RCOALE74=parsed.facts.RCFALE74.map(f=>({...f,unit:'iso4217:USD'}));
+  assert.equal(normalizeBankReport(parsed,{form:'031'}).validation.passed,false);
+});
 test('existing official 031 fixtures retain validated financial values under the expanded mapping',async()=>{
   for(const rssd of [852218,480228,451965]){
     const xml=await readFile(new URL(`./fixtures/bank-${rssd}-${date}.xml`,import.meta.url),'utf8');

@@ -160,7 +160,7 @@ const GUIDES = {
   cashAdjustments: guide(
     "The arithmetic difference between operating cash flow and net income.",
     "Use the cash-flow statement reconciliation to identify the specific noncash items and operating balance changes.",
-    "This residual does not attribute the difference to individual causes or prove earnings manipulation.",
+    "This residual does not attribute the difference to individual causes or prove earnings manipulation. Operating cash flow can include noncontrolling interests while the selected net income belongs to the parent, so ownership scope can also contribute.",
     '"operating activities" OR "noncash" OR "working capital"',
   ),
   cash: guide(
@@ -224,8 +224,15 @@ const GUIDES = {
     "Asset accounting and business models affect comparability. Interim annualization is arithmetic, not a full-year forecast.",
     '"return on assets" OR "net income" OR "total assets"',
   ),
+  totalDebt: guide(
+    "The selected reported borrowing subtotal or reconciled current and noncurrent components, within the cited concepts' scope.",
+    "Read the primary balance sheet and debt notes for other separately presented borrowing categories.",
+    "Financial issuers may report unsecured, secured and subordinated borrowings separately. This measure is not a complete total of all obligations; unverified components are never blindly added because they can overlap.",
+    '"borrowings" OR "subordinated debt" OR "secured financing"',
+    "notes",
+  ),
   debtAssets: guide(
-    "Reported total debt relative to total assets, using a combined reported amount or a complete reconciliation of current and noncurrent debt. The evidence identifies the selected scope.",
+    "Selected reported debt relative to total assets, using the cited borrowing subtotal or reconciled current and noncurrent components. This does not establish comprehensive borrowing coverage.",
     "Review issuance, repayment, debt reclassification, asset changes and borrowing terms.",
     "The selected debt concepts may not capture every lease, guarantee or commitment. This ratio does not establish covenant compliance.",
     "debt OR maturity OR covenant OR guarantee",
@@ -233,7 +240,7 @@ const GUIDES = {
     ["corporate", "insurance"],
   ),
   reportedDebtEquity: guide(
-    "Reported total debt relative to positive stockholders’ equity, using a combined reported amount or a complete reconciliation of current and noncurrent debt.",
+    "Selected reported debt relative to positive stockholders’ equity. The cited subtotal or reconciled components may omit separately reported borrowings.",
     "Review borrowing, repayments and changes in the equity base alongside the cited debt scope.",
     "Lease and other obligation coverage follows the source concepts. Nonpositive equity makes this ratio unavailable; a small positive equity base can magnify it.",
     '"borrowings" OR "debt" OR "stockholders equity"',
@@ -241,7 +248,7 @@ const GUIDES = {
     ["corporate", "insurance"],
   ),
   netReportedDebt: guide(
-    "Reported total debt after subtracting cash and equivalents, using a combined reported debt amount or a complete reconciliation of current and noncurrent debt.",
+    "Selected reported debt after subtracting cash and equivalents. This uses a cited subtotal or reconciled current and noncurrent components, not proof that every borrowing is included.",
     "Review the sources of borrowing and cash changes and whether cash is available to repay obligations.",
     "The cited debt scope may exclude obligations. A negative amount means selected cash exceeds selected debt; it does not establish that every obligation is covered.",
     '"borrowings" OR "cash equivalents"',

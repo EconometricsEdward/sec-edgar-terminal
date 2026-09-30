@@ -16,7 +16,9 @@ import {
 } from "./xbrlPeriods.js";
 import { evidenceSources, evidenceCalculations } from "./researchEvidence.js";
 import { comparePointQuality } from "./compareQuality.js";
+import { financialSourceScopeIssue } from "./financialComparisonScope.js";
 import { createAnalysisFinancialMapper } from "./analysisFinancialMappings.js";
+import { ANALYSIS_DEBT_LABEL, ANALYSIS_INSURANCE_LENS_NOTE } from "./analysisMappingPresentation.js";
 import {
   SUPPLEMENTAL_METRIC_DEFINITIONS,
   calculateSupplementalMetric,
@@ -125,6 +127,7 @@ export function buildAnalysisCompany(company, settings = {}) {
           "grossProfit",
           "rnd",
           "inventory",
+          "operatingIncome",
         ].includes(row.key)
       )
         continue;
@@ -167,7 +170,7 @@ export function buildAnalysisCompany(company, settings = {}) {
       );
   }
   for (const [key, label] of [
-    ["totalDebt", "Total reported debt"],
+    ["totalDebt", ANALYSIS_DEBT_LABEL],
     ["longTermInvestments", "Noncurrent investments"],
   ])
     add(financialMapper.row({ key, label, format: "currency" }, periods), "balance");
@@ -618,6 +621,12 @@ export function buildAnalysisCompany(company, settings = {}) {
           : null,
       };
     });
+  const correctedFiscalPeriods = periods.filter((period) => period.fiscalMetadataCorrection);
+  const sourceCoverage = correctedFiscalPeriods.length
+    ? { ...(company.sourceCoverage || {}), notices: [
+      ...(company.sourceCoverage?.notices || []),
+      ...correctedFiscalPeriods.map((period) => `The filing metadata for ${period.end} reports FY${period.fiscalMetadataCorrection.reportedFiscalYear} ${period.fiscalMetadataCorrection.reportedFiscalPeriod}; the preceding annual endpoint and reported fiscal-start contexts establish FY${period.fy} ${period.fp}. Original fiscal metadata remains in the period evidence.`),
+    ] } : company.sourceCoverage;
   return {
     ...comparison,
     version: ANALYSIS_VERSION,
@@ -626,11 +635,14 @@ export function buildAnalysisCompany(company, settings = {}) {
     metrics,
     definitions: Object.values(definitions).sort((a, b) => a.order - b.order),
     revenueKey,
+    lensNote: lens === "insurance"
+      ? ANALYSIS_INSURANCE_LENS_NOTE
+      : comparison.lensNote,
     highlights: defaultMetrics(lens).slice(0, 6),
     filings: (company.filings || [])
       .filter((f) => !settings.asOf || f.filingDate <= settings.asOf)
       .slice(0, 100),
-    ...(company.sourceCoverage ? { sourceCoverage: company.sourceCoverage } : {}),
+    ...(sourceCoverage ? { sourceCoverage } : {}),
     note: "Standard SEC XBRL concepts, USD and reported per-share units. This is a normalized financial extract, not a complete reproduction of the filed statements. Custom tags and unavailable contexts remain missing. Latest filed values within the cutoff are used; revisions are not automatically errors.",
   };
 }
@@ -750,6 +762,11 @@ export function analysisChange(current, before, format) {
       percent: null,
       reason: "The actual reported flow durations differ by more than 14 days.",
     };
+  // Within-period earnings/profit bridges intentionally compare unlike rows.
+  // Across periods, never present a known unit or accounting-scope switch as
+  // economic growth, including the statement, chart and public-summary views.
+  const scopeIssue = a.end !== b.end ? financialSourceScopeIssue(current, before) : null;
+  if (scopeIssue) return { delta: null, percent: null, reason: scopeIssue };
   const delta = current.value - before.value;
   return {
     delta,

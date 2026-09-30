@@ -10,7 +10,7 @@ import { createPeerApi } from '../src/utils/bank/peerApi.js';
 import { createPeerService } from '../src/utils/bank/peerService.js';
 import { prepareUbpr } from '../src/utils/bank/peerWorker.js';
 const period='2026-06-30';
-const raw=(rssd=101)=>({RSSDID:rssd,CERT:rssd,REPDTE:'20260630',ASSET:100000,LNLSGR:60000,LNRE:30000,LNCI:15000,LNCON:9000,DEP:80000,DEPDOM:80000,DEPNI:20000,BRO:4000,ROA:1.2,ROE:12,NIMY:3.5,RBC1AAJ:10,NCLNLSR:0,NTLNLSR:-.1});
+const raw=(rssd=101)=>({RSSDID:rssd,CERT:rssd,REPDTE:'20260630',ASSET:100000,LNLSGR:60000,LNRE:30000,LNCI:15000,LNCON:9000,DEP:80000,DEPDOM:80000,DEPNIDOM:20000,BRO:4000,ROA:1.2,ROE:12,NIMY:3.5,RBC1AAJ:10,NCLNLSR:0,NTLNLSR:-.1});
 test('FDIC matching preserves units, true zero, negative recoveries and missing input coverage',()=>{
   const profile=normalizePeerRecord(raw(),period);
   assert.equal(profile.assets,100000);assert.equal(profile.metrics.noncurrent,0);assert.equal(profile.metrics.chargeoffs,-.1);
@@ -138,6 +138,17 @@ test('peer SQL fences ingestion, publishes only complete identity-joined snapsho
     const old=await op('peer_history',{...payload,period:prior,snapshotId:priorId});
     assert.ok(old.periods.every(p=>p<=prior));assert.equal(old.profiles.length,7);
     assert.equal((await op('peer_history',{...payload,peers:[]})).profiles.length,2);
+    // The v3 scope correction must not reuse old-definition observations. Old
+    // clients may finish a pinned v2 read during a rolling deployment.
+    await db.query("update edgar_private.bank_peer_snapshots set model_version='bankscope-peers-3' where id=$1",[revisedId]);
+    const corrected=await op('peer_history',{...payload,snapshotId:revisedId});
+    assert.deepEqual(corrected.snapshots.map(s=>s.id),[revisedId]);
+    assert.equal(corrected.profiles.length,7);
+    assert.ok(corrected.profiles.every(p=>p.period===period));
+    assert.deepEqual((await op('peer_history',payload)).snapshots.map(s=>s.id),[priorId,snapshotId]);
+    await db.query("update edgar_private.bank_peer_snapshots set model_version='bankscope-peers-3' where id=$1",[priorId]);
+    assert.deepEqual((await op('peer_history',{...payload,snapshotId:revisedId})).snapshots.map(s=>s.id),[priorId,revisedId]);
+    assert.deepEqual((await op('peer_history',payload)).snapshots.map(s=>s.id),[snapshotId]);
     for(const role of ['anon','authenticated']){
       assert.equal((await db.query(`select has_function_privilege('${role}','public.bank_scope_operation(text,jsonb)','execute') allowed`)).rows[0].allowed,false);
       assert.equal((await db.query(`select has_table_privilege('${role}','edgar_private.bank_peer_profiles','select') allowed`)).rows[0].allowed,false);

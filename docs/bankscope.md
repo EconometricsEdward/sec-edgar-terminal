@@ -12,7 +12,7 @@ First complete discovery on September 25, 2026 found 4,445 distinct legal banks 
 
 - 35 metrics use form-aware schedules and item codes. Domestic forms use RCON balance-sheet and RCOA regulatory-capital items; form 031 retains its consolidated/foreign-office basis.
 - Monetary XBRL values remain USD in storage and are displayed in millions. Ratios are pure fractions multiplied by 100. Source decimals describe precision and are not a scale multiplier.
-- The CBLR election, RCOALE74, uses FFIEC's nonMonetary unit in real source files. Value 1 indicates CBLR. Missing risk-weighted assets, total capital and risk-based ratios then remain explicitly not required; the reported leverage ratio is retained. An unverified election cannot excuse missing capital data.
+- The CBLR election, RCOALE74, uses FFIEC's nonMonetary unit in real source files. Value 1 indicates CBLR. Missing risk-weighted assets, total capital and risk-based ratios then remain explicitly not required; the reported leverage ratio is retained. An unverified election cannot excuse missing capital data. RC-R I 31.a uses `RCOALE74` on all three forms, including 031; it does not inherit the RCFA prefix of other 031 capital amounts.
 - Q1 flows equal YTD. Other quarters equal current YTD minus the immediately preceding same-year YTD amount. No cross-year subtraction or substitution is allowed. A missing prior quarter yields unavailable.
 - Ratio changes use percentage points. Percentage growth needs a positive prior denominator. No growth is calculated between YTD periods.
 - Comparisons use the chosen quarter for every bank; missing dates never fall back to a different quarter. N/A is distinguished from missing or unprepared data.
@@ -59,3 +59,7 @@ The original three form-031 fixtures continue to reconcile. Tests cover actual s
 ## Current boundaries
 
 This release provides four recent Call Report quarters, not unlimited historical backfill. Credit unions and institutions outside the FFIEC Call Report panels are outside this dataset. A bank legal entity differs from a listed holding company. The preparation queue is intentionally bounded; upstream outages or report validation failures remain visible instead of producing invented values.
+
+## Source-accuracy audit
+
+The [30 September 2026 audit](bankscope-accuracy-audit-2026-09-30.md) compares six banks across all four retained quarters with hash-verified original XBRL and independent official FDIC data. It includes exact evidence, reproducible read-only capture/replay, and version-safe correction of the 031 CBLR election and domestic funding numerator. New workers requeue at most 16 known old-version retained 031 reports per begin, using existing normalized metrics and matching source/job submission identities; source reuse avoids CDR downloads. Pending amendments, source-only parse failures, current/future mappings and out-of-window reports are not reset.

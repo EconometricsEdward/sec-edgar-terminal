@@ -1,0 +1,242 @@
+[
+  {
+    "ticker": "AMZN",
+    "basis": "annual",
+    "accepted": true,
+    "changes": []
+  },
+  {
+    "ticker": "AMZN",
+    "basis": "quarter",
+    "accepted": false,
+    "changes": []
+  },
+  {
+    "ticker": "AMZN",
+    "basis": "ytd",
+    "accepted": false,
+    "changes": []
+  },
+  {
+    "ticker": "AMZN",
+    "basis": "ttm",
+    "accepted": false,
+    "changes": []
+  },
+  {
+    "ticker": "BRK-B",
+    "basis": "annual",
+    "accepted": true,
+    "changes": []
+  },
+  {
+    "ticker": "BRK-B",
+    "basis": "quarter",
+    "accepted": true,
+    "changes": []
+  },
+  {
+    "ticker": "BRK-B",
+    "basis": "ytd",
+    "accepted": true,
+    "changes": []
+  },
+  {
+    "ticker": "BRK-B",
+    "basis": "ttm",
+    "accepted": true,
+    "changes": []
+  },
+  {
+    "ticker": "COST",
+    "basis": "annual",
+    "accepted": true,
+    "changes": []
+  },
+  {
+    "ticker": "COST",
+    "basis": "quarter",
+    "accepted": true,
+    "changes": []
+  },
+  {
+    "ticker": "COST",
+    "basis": "ytd",
+    "accepted": true,
+    "changes": []
+  },
+  {
+    "ticker": "COST",
+    "basis": "ttm",
+    "accepted": true,
+    "changes": []
+  },
+  {
+    "ticker": "DAL",
+    "basis": "annual",
+    "accepted": true,
+    "changes": []
+  },
+  {
+    "ticker": "DAL",
+    "basis": "quarter",
+    "accepted": true,
+    "changes": []
+  },
+  {
+    "ticker": "DAL",
+    "basis": "ytd",
+    "accepted": true,
+    "changes": []
+  },
+  {
+    "ticker": "DAL",
+    "basis": "ttm",
+    "accepted": true,
+    "changes": []
+  },
+  {
+    "ticker": "GE",
+    "basis": "annual",
+    "accepted": true,
+    "changes": []
+  },
+  {
+    "ticker": "GE",
+    "basis": "quarter",
+    "accepted": false,
+    "changes": []
+  },
+  {
+    "ticker": "GE",
+    "basis": "ytd",
+    "accepted": false,
+    "changes": []
+  },
+  {
+    "ticker": "GE",
+    "basis": "ttm",
+    "accepted": false,
+    "changes": []
+  },
+  {
+    "ticker": "GS",
+    "basis": "annual",
+    "accepted": true,
+    "changes": []
+  },
+  {
+    "ticker": "GS",
+    "basis": "quarter",
+    "accepted": true,
+    "changes": []
+  },
+  {
+    "ticker": "GS",
+    "basis": "ytd",
+    "accepted": true,
+    "changes": []
+  },
+  {
+    "ticker": "GS",
+    "basis": "ttm",
+    "accepted": true,
+    "changes": []
+  },
+  {
+    "ticker": "JPM",
+    "basis": "annual",
+    "accepted": true,
+    "changes": []
+  },
+  {
+    "ticker": "JPM",
+    "basis": "quarter",
+    "accepted": true,
+    "changes": []
+  },
+  {
+    "ticker": "JPM",
+    "basis": "ytd",
+    "accepted": true,
+    "changes": []
+  },
+  {
+    "ticker": "JPM",
+    "basis": "ttm",
+    "accepted": true,
+    "changes": []
+  },
+  {
+    "ticker": "MET",
+    "basis": "annual",
+    "accepted": true,
+    "changes": []
+  },
+  {
+    "ticker": "MET",
+    "basis": "quarter",
+    "accepted": true,
+    "changes": []
+  },
+  {
+    "ticker": "MET",
+    "basis": "ytd",
+    "accepted": true,
+    "changes": []
+  },
+  {
+    "ticker": "MET",
+    "basis": "ttm",
+    "accepted": true,
+    "changes": []
+  },
+  {
+    "ticker": "PLD",
+    "basis": "annual",
+    "accepted": true,
+    "changes": []
+  },
+  {
+    "ticker": "PLD",
+    "basis": "quarter",
+    "accepted": true,
+    "changes": []
+  },
+  {
+    "ticker": "PLD",
+    "basis": "ytd",
+    "accepted": true,
+    "changes": []
+  },
+  {
+    "ticker": "PLD",
+    "basis": "ttm",
+    "accepted": true,
+    "changes": []
+  },
+  {
+    "ticker": "XOM",
+    "basis": "annual",
+    "accepted": true,
+    "changes": []
+  },
+  {
+    "ticker": "XOM",
+    "basis": "quarter",
+    "accepted": true,
+    "changes": []
+  },
+  {
+    "ticker": "XOM",
+    "basis": "ytd",
+    "accepted": true,
+    "changes": []
+  },
+  {
+    "ticker": "XOM",
+    "basis": "ttm",
+    "accepted": true,
+    "changes": []
+  }
+]

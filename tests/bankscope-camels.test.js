@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { normalizePeerRecord,PEER_MODEL_VERSION } from '../src/utils/bank/peerSource.js';
+import { normalizePeerRecord,PEER_MODEL_VERSION,fdicSourceUrl } from '../src/utils/bank/peerSource.js';
 import { buildPeerAnalysis } from '../src/utils/bank/peerModel.js';
 import { formatPeerPercent } from '../src/utils/bank/peerMetrics.js';
 import { cblrReference,regulatoryContext } from '../src/utils/bank/regulatoryContext.js';
@@ -31,6 +31,20 @@ test('expanded real FDIC records retain percentage units and identify CBLR witho
   assert.equal(regulatoryContext(unknown,period).framework,'unknown');
   assert.equal(regulatoryContext(unknown,period).rows.length,0);
   assert.equal(unknown.metrics.totalCapital,null);
+});
+test('domestic funding uses DEPNIDOM and never substitutes all-office noninterest deposits',()=>{
+  const raw=source(451965),bank=normalizePeerRecord(raw,period);
+  assert.equal(raw.DEPNIDOM,417129000);
+  assert.equal(raw.DEPNI,417255000);
+  assert.equal(bank.metrics.noninterestDeposits,417129000/1554614000*100);
+  assert.equal(bank.funding[1],417129000/1554614000);
+  const missing=normalizePeerRecord({...raw,DEPNIDOM:null},period);
+  assert.equal(missing.metrics.noninterestDeposits,null);
+  assert.equal(missing.funding[1],null);
+  const fields=new URL(fdicSourceUrl(period)).searchParams.get('fields').split(',');
+  assert.ok(fields.includes('DEPNIDOM'));
+  assert.ok(!fields.includes('DEPNI'));
+  assert.equal(PEER_MODEL_VERSION,'bankscope-peers-3');
 });
 test('calculated peer metrics preserve real zeros, negatives and >100% values without filling missing denominators',()=>{
   const raw={...source(451965),BRO:0,NONIIR:-1,LNLSGR:200,DEP:100,NCLNLS:0,LNATRES:5};
@@ -66,7 +80,7 @@ test('risk-based references keep minimum, base buffer and PCA tests distinct wit
   assert.equal(regulatoryContext({cblr:false,metrics:{cet1:0}},period).rows[0].position,'below');
 });
 test('a new metric version refreshes fresh snapshots and publishes only after all batches succeed',async()=>{
-  const calls=[],now=()=>Date.parse('2026-09-25T20:00:00Z');let version='bankscope-peers-1';
+  const calls=[],now=()=>Date.parse('2026-09-25T20:00:00Z');let version='bankscope-peers-2';
   const options={periods:[period],now,store:async()=>({snapshots:[{report_date:period,model_version:version,completed_at:new Date(now()).toISOString()}]}),
     fetchUniverse:async()=>({period,rows:Array.from({length:1001},()=>({profile:{},raw:{}})),modelVersion:PEER_MODEL_VERSION}),owned:async(op,p)=>calls.push([op,p])};
   assert.equal(await refreshPeerUniverse(options),1001);assert.deepEqual(calls.map(c=>c[0]),['peer_start','peer_batch','peer_batch','peer_batch','peer_complete']);

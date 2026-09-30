@@ -10,6 +10,10 @@ The projection reads `readPreparedAnalysis` only. It does not acquire SEC docume
 
 The existing preparation scheduler continues to refresh the company's four bases from shared canonical source documents. No new scheduler or provider load is added. Prepared misses are explicit. A 503 is not evidence that no filings or financial information exist.
 
+## Mapping-version compatibility
+
+The September 2026 accuracy revision includes a serving-only adapter for the exact preceding mapping version. It validates every retained period and source reference before applying scope-label changes and removing misleading insurer operating-income rows. Values and original source/calculation clocks are unchanged, and responses disclose the adapter marker. Unsafe Amazon/GE interim histories and unknown/malformed versions remain unavailable until canonical recalculation; there is no blanket acceptance of older snapshots. The stored v2 object is never changed, so scheduled preparation still publishes a genuine v3 result. Frozen snapshots can reuse the in-memory adaptation through weak references; no additional source acquisition, enrollment, storage writes or scheduler is added.
+
 ## Cache bounds
 
 - Full prepared financial histories and source evidence remain in the existing compressed File Storage architecture. Database pointers/metrics and immutable version history are unchanged.

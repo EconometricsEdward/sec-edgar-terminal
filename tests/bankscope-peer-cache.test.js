@@ -13,7 +13,7 @@ function fixture(date = period, count = 40, publication = '2026-09-28T00:00:00Z'
       source_index: 'fdic-publication', source_updated_at: null },
     profiles: Array.from({ length: count }, (_, index) => ({
       ...normalizePeerRecord({ REPDTE: date.replaceAll('-', ''), RSSDID: index + 1, CERT: index + 1, ASSET: 10000 + index,
-        LNLSGR: 7000, LNRE: 3000, LNCI: 2000, LNCON: 1000, DEP: 8000, DEPDOM: 8000, DEPNI: 2000, BRO: 100,
+        LNLSGR: 7000, LNRE: 3000, LNCI: 2000, LNCON: 1000, DEP: 8000, DEPDOM: 8000, DEPNIDOM: 2000, BRO: 100,
         ROA: 1.1, ROE: 12, CBLRIND: 0, RBCT1CER: 12 }, date), name: `BANK ${index + 1}`, city: 'CITY', state: 'NY', form: '041',
     })),
   };
@@ -42,6 +42,15 @@ function backend(data = fixture()) {
 }
 const universeEntries = shared => [...shared.entries].filter(([, text]) => JSON.parse(text).gzipBase64);
 const manifestEntries = shared => [...shared.entries].filter(([, text]) => JSON.parse(text).snapshots);
+
+test('a superseded peer model is withheld without reading or relabeling the old prepared payload', async () => {
+  const legacy=fixture();legacy.snapshot.model_version='bankscope-peers-2';
+  assert.equal(validPeerUniverse(legacy,period),false);
+  const backendData=backend(legacy),shared=sharedCache();
+  const get=createBankPeerUniverse({store:backendData.store,cache:shared.cache,env,now:()=>Date.parse('2026-09-28T01:00:00Z')});
+  assert.deepEqual((await get(period)).profiles,[]);
+  assert.equal(backendData.counts.peer_universe,0);
+});
 
 test('large universe and small publication manifest are shared across service instances and bank selections', async () => {
   const shared = sharedCache(), data = fixture(period, 4500), source = backend(data);

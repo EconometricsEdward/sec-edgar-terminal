@@ -34,7 +34,9 @@ function auditedFact(parsed,code,period) {
 export function normalizeBankReport(parsed,{form,ingestedAt=new Date().toISOString()}={}) {
   const schemaForms=parsed.schemaReferences.map(s=>/report(031|041|051)\//i.exec(s)?.[1]).filter(Boolean);
   if (schemaForms.some(f=>f!==form)) throw new BankDataError('source_form_mismatch');
-  const election=pickFact(parsed,form==='031'?'RCFALE74':'RCOALE74');
+  // RC-R I 31.a is RCOALE74 on ALL forms, including 031. The other
+  // capital fields use RCFA on 031, but the election does not.
+  const election=pickFact(parsed,'RCOALE74');
   const cblr=election.value===1 && /(^|:)(pure|nonMonetary)$/i.test(election.unit);
   const capitalFramework=cblr?'CBLR':'risk_based';
   const metrics=bankMetricDefinitions(form).map(d=>{

@@ -12,35 +12,79 @@ export function daysBetween(start, end) {
 }
 const nextDay = (date) => new Date(Date.parse(date) + DAY).toISOString().slice(0, 10);
 const duration = (e) => e.start ? daysBetween(e.start, e.end) + 1 : null;
+// Interim statements can also disclose trailing-year columns (for example,
+// Amazon's cash-flow statement). Those are not the fiscal-year-to-date start.
+// Use the filing's reporting season only to constrain the observed duration;
+// keep the actual reported dates, including 52/53-week fiscal calendars.
+function fiscalDuration(entry, annual, fp) {
+  const days = duration(entry);
+  if (annual) return days >= 300 && days <= 400;
+  const quarter = Number(fp?.slice(1));
+  const minimum = { 1: 60, 2: 150, 3: 240 }[quarter];
+  return minimum != null && days >= minimum && days <= quarter * 100 + 20;
+}
 const valid = (e, asOf) => validFinancialPeriodDates(e) && Number.isFinite(e.val) && REPORT.test(e.form || '') && (!asOf || e.filed <= asOf);
 const latest = (a, b) => (b.filed || '').localeCompare(a.filed || '') || (b.accn || '').localeCompare(a.accn || '');
 
 function anchorEntries(facts, asOf) {
   return ['us-gaap', 'ifrs-full'].flatMap((taxonomy) => ANCHORS.flatMap((tag) =>
-    Object.values(facts?.[taxonomy]?.[tag]?.units || {}).flat().filter((e) => valid(e, asOf))));
+    Object.values(facts?.[taxonomy]?.[tag]?.units || {}).flat().filter((e) => valid(e, asOf)).map((e) => ({ ...e, anchorTag: tag }))));
 }
 
 export function reportingPeriods(facts, kind = 'annual', asOf) {
   const entries = anchorEntries(facts, asOf);
-  const filings = new Map();
+  const filings = new Map(), filingEntries = new Map();
   for (const e of entries) {
     const key = e.accn || `${e.filed}:${e.form}`;
+    if (!filingEntries.has(key)) filingEntries.set(key, []);
+    filingEntries.get(key).push(e);
     const prior = filings.get(key);
     if (!prior || e.end > prior.end) filings.set(key, e);
   }
+  const annualHeads = [...filings.entries()].filter(([key, head]) => ANNUAL.test(head.form)
+    && Number.isInteger(head.fy) && filingEntries.get(key).some((entry) =>
+      entry.end === head.end && fiscalDuration(entry, true)))
+    .map(([, head]) => head).sort((a, b) => b.end.localeCompare(a.end));
   const periods = new Map();
   for (const [key, head] of filings) {
     const annual = ANNUAL.test(head.form);
     if (kind === 'annual' && !annual) continue;
     if (!annual && !/^Q[123]$/.test(head.fp || '')) continue;
-    const related = entries.filter((e) => (e.accn || `${e.filed}:${e.form}`) === key && e.end === head.end);
-    const starts = related.filter((e) => e.start && duration(e) <= 400).map((e) => e.start).sort();
-    const fp = annual ? (kind === 'annual' ? 'FY' : 'Q4') : head.fp;
+    const related = filingEntries.get(key).filter((e) => e.end === head.end);
+    let fiscalPeriod = head.fp, fiscalYear = head.fy, fiscalMetadataCorrection;
+    const legacyFiscalStart = related.filter((entry) => entry.start && duration(entry) <= 400)
+      .map((entry) => entry.start).sort()[0];
+    // Restrict metadata reconciliation to legacy starts already proved
+    // incompatible with the declared reporting season. Otherwise leave the
+    // filing label untouched rather than widening the correction's scope.
+    if (!annual && legacyFiscalStart && !fiscalDuration({ start: legacyFiscalStart, end: head.end }, false, head.fp)) {
+      const previousAnnual = annualHeads.find((entry) => entry.end < head.end && entry.filed <= head.filed
+        && daysBetween(entry.end, head.end) <= 320);
+      if (previousAnnual) {
+        const opening = nextDay(previousAnnual.end);
+        const observed = new Set(related.filter((entry) => entry.start === opening).map((entry) => entry.anchorTag));
+        const inferredQuarter = [1, 2, 3].find((q) => fiscalDuration({ start: opening, end: head.end }, false, `Q${q}`));
+        // A mis-tagged filing's fy/fp is not stronger evidence than an exact
+        // preceding annual endpoint plus two observed fiscal-start concepts.
+        // Keep the contrary metadata rather than silently erasing it.
+        if (observed.size >= 2 && inferredQuarter &&
+          (head.fp !== `Q${inferredQuarter}` || head.fy !== previousAnnual.fy + 1)) {
+          fiscalPeriod = `Q${inferredQuarter}`; fiscalYear = previousAnnual.fy + 1;
+          fiscalMetadataCorrection = { reportedFiscalPeriod: head.fp, reportedFiscalYear: head.fy,
+            annualAccession: previousAnnual.accn, annualEnd: previousAnnual.end,
+            fiscalStart: opening, evidenceConcepts: [...observed].sort(),
+            note: 'Fiscal label reconciled from the preceding annual endpoint and matching reported fiscal-start contexts; filing fiscal metadata conflicts with those dates.' };
+        }
+      }
+    }
+    const starts = related.filter((e) => e.start && fiscalDuration(e, annual, fiscalPeriod)).map((e) => e.start).sort();
+    const fp = annual ? (kind === 'annual' ? 'FY' : 'Q4') : fiscalPeriod;
     const period = {
-      fy: head.fy || Number(head.end.slice(0, 4)), fp, end: head.end,
+      fy: fiscalYear || Number(head.end.slice(0, 4)), fp, end: head.end,
+      ...(fiscalMetadataCorrection ? { fiscalMetadataCorrection } : {}),
       filed: head.filed, form: head.form, accession: head.accn,
       kind: kind === 'annual' ? 'annual' : 'quarter',
-      fiscalStart: starts[0] || null, asOf,
+      fiscalStart: fiscalMetadataCorrection?.fiscalStart || starts[0] || null, asOf,
     };
     const old = periods.get(head.end);
     if (!old || head.filed > old.filed) periods.set(head.end, period);
@@ -185,8 +229,11 @@ export function selectFinancialFact(facts, tags, period, unit = 'USD', { additiv
         return d >= 300 && d <= 400 && (!expectedStart || Math.abs(daysBetween(expectedStart, e.start)) <= 3);
       }
       if (kind === 'ytd') {
-        return period.fiscalStart ? e.start === period.fiscalStart
-          : d >= 60 && d <= (Number(period.fp?.slice(1)) || 4) * 100 + 20;
+        // Even externally constructed or saved period descriptors must not
+        // reinterpret a trailing year as an interim YTD observation.
+        const annualYtd = period.fp === 'Q4' || period.fp === 'FY';
+        return fiscalDuration(e, annualYtd, period.fp)
+          && (period.fiscalStart ? e.start === period.fiscalStart : true);
       }
       return d >= 60 && d <= 120 && (!period.start || Math.abs(daysBetween(period.start, e.start)) <= 3);
     });

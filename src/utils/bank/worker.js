@@ -12,7 +12,7 @@ import { refreshPeerUniverse,prepareUbpr } from './peerWorker.js';
 /** One durable, fenced worker. Reader GET routes never import or invoke this. */
 export async function runBankWorker({store=bankScopeStore,env=process.env,maintain=false,maxFilings=4,now=Date.now,clientFactory=createFfiecClient,peers=true,
   invalidateRead=store===bankScopeStore?invalidateBankPublicRead:async()=>{}}={}) {
-  const owner=randomUUID(),begin=await store('begin',{owner});
+  const owner=randomUUID(),begin=await store('begin',{owner,mappingVersion:SCOPE_MAPPING_VERSION});
   if(!begin.allowed)return {status:begin.code,retryAt:begin.retryAt};
   const owned=async(op,payload={})=>{
     const value=await store(op,{...payload,owner});
