@@ -83,6 +83,11 @@ export function riskBankContext(data, rssd) {
   return { source: 'bank', rssd, bank: bank ? { name: bank.legal_name, form: bank.form_type } : null,
     status: latest?.validation?.passed ? 'ready' : latest ? 'review' : 'pending',
     period: latestPeriod || null, retrievedAt: latest?.retrieved_at || null, stale: Boolean(data.publicReadCache?.stale),
+    reportingPeriods: periods.map(date => {
+      const report = reports.find(row => row.report_date === date);
+      return { date, status: report?.validation?.passed ? 'ready' : report ? 'review' : 'pending', retrievedAt: report?.retrieved_at || null,
+        sourceUrl: report?.validation?.passed ? `/api/banks/source?${new URLSearchParams({ rssd: String(rssd), period: date, hash: report.source_sha256 })}` : null };
+    }),
     metrics: BANK_ITEMS.map(([key, label, formula, keys]) => ({ key, label, formula,
       value: value(latest, keys), history: periods.map(date => ({ date, value: value(reports.find(r => r.report_date === date), keys) })),
       sources: latest ? keys.map(metric => ({ metric,

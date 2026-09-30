@@ -19,14 +19,14 @@ new Function('require', 'module', 'exports', compiled)(name => {
   if (name === '../../utils/riskWorkspace.js') return workspace;
   if (name === 'next/dynamic') return { __esModule: true, default: () => section('market').default };
   if (name.endsWith('.css')) return { __esModule: true, default: {} };
-  if (name === './RiskFundingStory' || name === './RiskNoteEvidence' || name.endsWith('ChartPeriodOverlay')) return section(name);
+  if (name === './RiskFundingStory' || name === './RiskNoteEvidence' || name === './RiskIntelligence' || name.endsWith('ChartPeriodOverlay')) return section(name);
   return require(name);
 }, testModule, testModule.exports);
 const Overview = testModule.exports.default;
 
 function sectionKeys(ticker, basis, cftcEnabled = true) {
   const tree = Overview({
-    data: { ticker, cik: ticker === 'AAPL' ? '0000320193' : '0000019617', sic: 3571 },
+    data: { ticker, sic: 3571 },
     profile: { basis, periods: [], metrics: [], industry: {}, coverage: { available: 0, total: 0, missing: [] } },
     cftcEnabled,
     onInspect: () => {},
@@ -40,15 +40,10 @@ test('stateful Risk sections have distinct sibling identities when the company o
     const keys = sectionKeys(ticker, basis);
     assert.equal(keys.length, 4);
     assert.equal(new Set(keys).size, keys.length, `${ticker}/${basis}: duplicate keys can leave the old funding history mounted`);
-    // Annual maturity evidence intentionally survives an annual/TTM toggle;
-    // its source does not depend on the financial-profile basis.
-    return keys.filter(key => !key.startsWith('maturities:'));
+    return keys;
   });
   assert.equal(new Set(snapshots.flat()).size, snapshots.flat().length, 'each section resets its inspection state for a different company or basis');
   const withoutMarket = sectionKeys('AAPL', 'ttm', false);
   assert.equal(withoutMarket.length, 3);
   assert.equal(new Set(withoutMarket).size, withoutMarket.length);
-  const maturityKey = (ticker, basis) => sectionKeys(ticker, basis).find(key => key.startsWith('maturities:'));
-  assert.equal(maturityKey('AAPL', 'ttm'), maturityKey('AAPL', 'annual'));
-  assert.notEqual(maturityKey('AAPL', 'ttm'), maturityKey('JPM', 'ttm'));
 });

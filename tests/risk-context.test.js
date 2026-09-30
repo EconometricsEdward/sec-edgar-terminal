@@ -23,6 +23,8 @@ test('bank view reconciles real Call Report amounts and keeps percentage units a
   const values = Object.fromEntries(raw.reports[0].metrics.map(m => [m.key,m.value]));
   const get = key => view.metrics.find(m => m.key === key).value;
   assert.equal(view.status,'ready');
+  assert.deepEqual(view.reportingPeriods.map(row => [row.date, row.status]), [['2026-06-30', 'ready']]);
+  assert.ok(view.reportingPeriods[0].sourceUrl.includes(`hash=${raw.reports[0].source_sha256}`));
   assert.equal(get('cet1_ratio'), values.cet1_ratio);
   assert.equal(get('nonaccrual_share'),values.nonaccrual / values.loans * 100);
   assert.equal(get('allowance_share'),values.allowance / values.loans_hfi * 100);
@@ -43,9 +45,11 @@ test('bank gaps, failed validation, zero denominators and wrong identities canno
   raw.reports[0].validation.passed = false;
   view = riskBankContext(raw,852218);
   assert.equal(view.status,'review'); assert.ok(view.metrics.every(m => m.value === null));
+  assert.equal(view.reportingPeriods[0].sourceUrl, null, 'unvalidated quarters do not expose a verified report link');
   raw.periods.push('2026-09-30');
   view = riskBankContext(raw,852218);
   assert.equal(view.status,'pending'); assert.equal(view.period,'2026-09-30');
+  assert.deepEqual(view.reportingPeriods.map(row => [row.date, row.status]), [['2026-06-30', 'review'], ['2026-09-30', 'pending']]);
   assert.ok(view.metrics.every(m => m.value === null),'do not substitute an older report for the latest quarter');
 });
 

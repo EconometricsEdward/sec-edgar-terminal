@@ -44,7 +44,7 @@ export default function RiskClient({ initialTicker = '', initialView = 'overview
     }
     const controller = new AbortController();
     setLoading(true); setError(''); setData(null); setExported(false); setExplorerOpen(false);
-    fetch(`/api/risk?ticker=${encodeURIComponent(query)}&v=${RISK_VERSION}`, { signal: controller.signal })
+    fetch(`/api/risk?ticker=${encodeURIComponent(query)}&v=${RISK_VERSION}&evidence=1`, { signal: controller.signal })
       .then(async res => { const body = await res.json(); if (!res.ok) throw new Error(body.error || 'Could not load the risk profile.'); return body; })
       .then((body: RiskData) => {
         if (controller.signal.aborted) return;
@@ -122,7 +122,7 @@ export default function RiskClient({ initialTicker = '', initialView = 'overview
           {explorerOpen && <div id="risk-metric-evidence"><MetricExplorer key={`${visibleData.ticker}:${basis}:${inspectVersion}`} data={visibleData} profile={profile} selected={selected} onSelect={setSelected} pillar={pillar} onPillar={setPillar} onlyMissing={onlyMissing} onOnlyMissing={setOnlyMissing} /></div>}
         </div>
       } />
-      <footer className={s.footer}><ShieldCheck size={16}/><p>Sources retain their own reporting dates and entity scopes. Screens are research prompts, not credit ratings or default probabilities. Missing figures are not treated as zero. The profile export covers SEC financial measures; supplementary panels link to their own evidence. <a href={`/api/risk?ticker=${encodeURIComponent(visibleData.ticker)}&v=${RISK_VERSION}`} target="_blank" rel="noreferrer">View SEC profile data</a></p></footer>
+      <footer className={s.footer}><ShieldCheck size={16}/><p>Sources retain their own reporting dates and entity scopes. Screens are research prompts, not credit ratings or default probabilities. Missing figures are not treated as zero. The profile export covers SEC financial measures; supplementary panels link to their own evidence. <a href={`/api/risk?ticker=${encodeURIComponent(visibleData.ticker)}&v=${RISK_VERSION}&evidence=1`} target="_blank" rel="noreferrer">View SEC profile data</a></p></footer>
     </>}
   </div>;
 }
