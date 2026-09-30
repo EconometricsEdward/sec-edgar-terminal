@@ -7,7 +7,7 @@ import { MARKET_VERSION } from '../src/utils/marketResearch.js';
 import { MARKET_OVERVIEW_VERSION } from '../src/utils/marketOverview.js';
 import { ANALYSIS_VERSION } from '../src/utils/analysisVersion.js';
 import { COMPARE_VERSION } from '../src/utils/compareResearch.js';
-import { RISK_VERSION } from '../src/utils/riskWorkspace.js';
+import { RISK_VERSION, RISK_CACHE_VERSION, canReuseRiskWorkspace } from '../src/utils/riskWorkspace.js';
 import { CHANGE_VERSION } from '../src/utils/filingChanges.js';
 import { QUANT_COVERAGE_VERSION } from '../src/utils/quantGroups.js';
 
@@ -53,7 +53,7 @@ test('every reviewed live key builder selects the intended disposable family', (
     ['filings-submissions-v1', `CIK${cik}.json`, 'research'], ['filings-submissions-v1', `CIK${cik}-submissions-001.json`, 'document'],
     ['analysis-research', `${ANALYSIS_VERSION}:BRK-B:annual:`, 'research'], ['compare-research', `${COMPARE_VERSION}:AAPL:quarter:2026-06-30`, 'research'],
     ['portfolio-company-v3-evidence-continuity', `portfolio-company-v3-evidence-continuity:${COMPARE_VERSION}:${ANALYSIS_VERSION}:${cik}:ttm`, 'research'],
-    ['holders-v3', 'AAPL', 'document'], [RISK_VERSION, 'AAPL', 'research'], [`${RISK_VERSION}-scan`, accession, 'document'],
+    ['holders-v3', 'AAPL', 'document'], [RISK_CACHE_VERSION, 'AAPL', 'research'], [`${RISK_CACHE_VERSION}-scan`, accession, 'document'],
     ['filings-reader-text-v2', `${cik}:${accession}:aapl-20251231.htm`, 'document'], ['disclosure-text-v1', `${cik}:${accession}:aapl-20251231.htm`, 'document'],
     ['edgar.broker-dealer-document.v1:production', `${cik}:${accession}:${'a'.repeat(64)}`, 'document'],
     ['edgar.broker-dealer-manifest.v1:production', `${cik}:${accession}`, 'document'],
@@ -91,20 +91,24 @@ test('policy excludes coordination, arbitrary URLs, unknown and preview namespac
 });
 
 test('current Risk cache entries retain bounds and reject unrelated versions and identities', async () => {
-  assert.equal(disposableCachePolicy(RISK_VERSION, 'AAPL').maxTtlSeconds, 25 * 3600);
-  assert.equal(disposableCachePolicy(`${RISK_VERSION}-scan`, accession).maxTtlSeconds, 30 * 86400);
+  assert.equal(disposableCachePolicy(RISK_CACHE_VERSION, 'AAPL').maxTtlSeconds, 25 * 3600);
+  assert.equal(disposableCachePolicy(`${RISK_CACHE_VERSION}-scan`, accession).maxTtlSeconds, 30 * 86400);
   for (const [type, id] of [
-    [RISK_VERSION, 'https://example.test'], [RISK_VERSION, 'AAPL:lease'],
-    [`${RISK_VERSION}-scan`, 'AAPL'], [`${RISK_VERSION}:preview`, 'AAPL'],
+    [RISK_CACHE_VERSION, 'https://example.test'], [RISK_CACHE_VERSION, 'AAPL:lease'],
+    [`${RISK_CACHE_VERSION}-scan`, 'AAPL'], [`${RISK_CACHE_VERSION}:preview`, 'AAPL'],
     ['risk-workspace-v999', 'AAPL'], ['risk-workspace-v999-scan', accession],
   ]) assert.equal(disposableCachePolicy(type, id), null, `${type}/${id}`);
   const payload = { version: RISK_VERSION, ticker: 'AAPL', generatedAt: new Date(NOW).toISOString() };
+  assert.equal(canReuseRiskWorkspace({ ...payload, version: RISK_CACHE_VERSION }), false, 'old calculation evidence must be recomputed in the existing slot');
+  assert.equal(canReuseRiskWorkspace(payload), true);
+  assert.equal(canReuseRiskWorkspace(payload, true), false);
+  assert.equal(canReuseRiskWorkspace({ ...payload, refinancing: null }, true), true);
   const { cache, calls } = setup({ response: params => params.p_ids ? Response.json([record('AAPL', payload)])
     : Response.json({ stored: true, rawSha256: params.p_raw_sha256, expiresAt: new Date(NOW + params.p_ttl_seconds * 1000).toISOString() }) });
-  assert.equal((await cache.cachePut(RISK_VERSION, 'AAPL', payload, 3600)).stored, true);
-  assert.deepEqual((await cache.cacheGet(RISK_VERSION, 'AAPL')).payload, payload);
+  assert.equal((await cache.cachePut(RISK_CACHE_VERSION, 'AAPL', payload, 3600)).stored, true);
+  assert.deepEqual((await cache.cacheGet(RISK_CACHE_VERSION, 'AAPL')).payload, payload);
   assert.equal(calls.length, 2);
-  assert.ok(calls.every(call => call.params.p_family === 'research' && call.params.p_type === RISK_VERSION));
+  assert.ok(calls.every(call => call.params.p_family === 'research' && call.params.p_type === RISK_CACHE_VERSION));
 });
 
 test('filing text cache admits bounded manifest-relative nested documents without traversal or URL suffixes', () => {

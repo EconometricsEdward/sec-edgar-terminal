@@ -119,7 +119,7 @@ export default function RiskStart({ onExplore, cftcEnabled }: { onExplore: (tick
       <div className={s.source}><FileText size={17} aria-hidden="true" /><div><strong>SEC filings</strong><span>Company financials & disclosures</span></div></div>
       {lens.id === 'banks' && <div className={s.source}><Landmark size={17} aria-hidden="true" /><div><strong>FFIEC Call Reports</strong><span>Selected legal bank · coverage varies</span></div></div>}
       <div className={s.source}><Activity size={17} aria-hidden="true" /><div><strong>New York Fed{cftcEnabled ? ' & CFTC' : ''}</strong><span>Funding{cftcEnabled ? ', positioning & swaps' : ' conditions'} · market context</span></div></div>
-      <Link href="/about" className={s.sourceLink}>Understand the sources <ArrowRight size={15} aria-hidden="true" /></Link>
+      <Link prefetch={false} href="/about" className={s.sourceLink}>Understand the sources <ArrowRight size={15} aria-hidden="true" /></Link>
     </div>
     <p className={s.scope}>Coverage and reporting dates vary by company and source. Market-wide data does not identify issuer positions. DTCC / FICC references open at the publisher.</p>
   </section>;

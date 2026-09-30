@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { assessRisk, scanRiskLanguage } from '../../../utils/riskAnalysis.js';
-import { decorateRiskProfile, RISK_VERSION, riskResponseForVersion } from '../../../utils/riskWorkspace.js';
+import { decorateRiskProfile, RISK_VERSION, RISK_CACHE_VERSION, canReuseRiskWorkspace, riskResponseForVersion } from '../../../utils/riskWorkspace.js';
 import { getOperatingTicker } from '../../../utils/tickerMap.js';
 import { fetchFilingText } from '../../../utils/filingTextParser.js';
 import { secResearchJson, submissionRows } from '../../../utils/secResearchData.js';
@@ -46,11 +46,11 @@ async function readAnnualDisclosure(submissions, cik) {
     }
   }
   if (!annual) return { error: `No original 10-K located${limited ? ' within the bounded filing-history search' : ' in available submissions'}. Foreign annual forms are not scanned.`, terms: [], historyLimited: limited };
-  const cached = await warmGet(`${RISK_VERSION}-scan`, annual.accession);
+  const cached = await warmGet(`${RISK_CACHE_VERSION}-scan`, annual.accession);
   if (cached) return cached;
   const text = await fetchFilingText(cik, annual.accession, annual.primaryDoc);
   const scan = { ...annual, url: annual.documentUrl, historyLimited: limited, error: text.error || (!text.text ? 'The filing text was empty.' : null), terms: text.text ? scanRiskLanguage(text.text) : [] };
-  if (!scan.error) await warmSet(`${RISK_VERSION}-scan`, annual.accession, scan, 86400);
+  if (!scan.error) await warmSet(`${RISK_CACHE_VERSION}-scan`, annual.accession, scan, 86400);
   return scan;
 }
 
@@ -65,10 +65,10 @@ export async function GET(request) {
   const profileResponse = (data) => response(riskResponseForVersion(data, params.get('v')));
   try {
     if (!scanOnly) {
-      const cached = await warmGet(RISK_VERSION, ticker);
+      const cached = await warmGet(RISK_CACHE_VERSION, ticker);
       // Additive evidence reuses the approved, bounded Risk cache family.
       // Older entries upgrade once in place; no new storage namespace/job.
-      if (cached && (!includeMaturities || Object.hasOwn(cached, 'refinancing'))) return profileResponse(cached);
+      if (canReuseRiskWorkspace(cached, includeMaturities)) return profileResponse(cached);
     }
     const entry = await getOperatingTicker(ticker);
     if (!entry) return NextResponse.json({ error: `No SEC operating company matched ${ticker}. Fund tickers are covered on the Funds page.` }, { status: 404 });
@@ -93,7 +93,7 @@ export async function GET(request) {
       // maturities into a successor schedule or read the 5,000-issuer atlas.
       refinancing: compactRefinancingProfile(extractRefinancingProfile(company, { cik, sic: submissions.sic, financialInstitution: current.industry.isFinancial })),
       version: RISK_VERSION, generatedAt: new Date().toISOString() };
-    await warmSet(RISK_VERSION, ticker, data, riskProfileCachePolicy(data).ttlSeconds);
+    await warmSet(RISK_CACHE_VERSION, ticker, data, riskProfileCachePolicy(data).ttlSeconds);
     return profileResponse(data);
   } catch (error) {
     return NextResponse.json({ error: error.message || 'Could not load the SEC risk profile. Please retry.' }, { status: 502 });

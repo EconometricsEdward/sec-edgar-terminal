@@ -1,5 +1,8 @@
 // Risk-page presentation and deterministic, before-tax sensitivity calculations.
 export const RISK_VERSION = 'risk-workspace-v10';
+// Keep one approved disposable slot per ticker; calculation upgrades replace it.
+export const RISK_CACHE_VERSION = 'risk-workspace-v9';
+export const canReuseRiskWorkspace = (data, includeMaturities = false) => Boolean(data && data.version === RISK_VERSION && (!includeMaturities || Object.hasOwn(data, 'refinancing')));
 export const SCREEN_LABELS = { low: 'Within screen', moderate: 'Monitor', elevated: 'Review', high: 'Priority review', info: 'Context', na: 'Unavailable' };
 export const PILLAR_LABELS = { credit: 'Credit', capital: 'Capital', liquidity: 'Liquidity', profitability: 'Earnings', quality: 'Earnings quality' };
 
