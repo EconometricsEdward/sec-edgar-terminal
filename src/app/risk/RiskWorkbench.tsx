@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
+import dynamic from 'next/dynamic';
 import { Activity, ArrowUpRight, BookOpen, ChartNoAxesCombined, Database, Layers3 } from 'lucide-react';
 import ChartPeriodOverlay from '../../components/charts/ChartPeriodOverlay';
 import { formatRiskValue } from '../../utils/riskWorkspace.js';
@@ -9,6 +10,8 @@ import { buildRiskResearchModel } from './riskResearchModel.js';
 import { maturityView } from './riskEvidenceModel.js';
 import type { RiskData, RiskProfile, RiskSource } from './riskTypes';
 import s from './RiskWorkbench.module.css';
+
+const RiskTimelineWorkspace = dynamic(() => import('./RiskTimelineWorkspace'), { loading: () => <p role="status">Opening risk timeline…</p> });
 
 type Measure = { id: string; label: string; value: number | null; prior?: number | null; format: string; formula?: string; sources?: RiskSource[]; series?: { end: string; value: number | null }[]; metricId?: string | null; note?: string };
 type EvidenceId = 'maturities' | 'bank' | 'notes' | 'markets' | 'connections';
@@ -83,20 +86,11 @@ function DebtSnapshot({ data, onOpen }: { data: RiskData; onOpen: () => void }) 
   </aside>;
 }
 
-function ChangeBars({ prior, current, format }: { prior: number; current: number; format: string }) {
-  const low = Math.min(0, prior, current), high = Math.max(0, prior, current), range = high - low || 1;
-  const x = (n: number) => 6 + (n - low) / range * 208, zero = x(0);
-  return <svg viewBox="0 0 220 54" role="img" aria-label={'Previous ' + value(prior, format) + ', latest ' + value(current, format)} className={s.changeBars}>
-    <line x1={zero} x2={zero} y1="2" y2="52" className={s.zeroLine}/>
-    <rect x={Math.min(zero, x(prior))} y="7" width={Math.abs(x(prior) - zero)} height="13" rx="2" className={s.priorBar}/>
-    <rect x={Math.min(zero, x(current))} y="32" width={Math.abs(x(current) - zero)} height="13" rx="2" className={s.debtBar}/>
-  </svg>;
-}
-
-export default function RiskWorkbench({ data, profile, onInspect, onEvidence, onExposures, onFcm, cftcEnabled }: { data: RiskData; profile: RiskProfile; onInspect: (id: string, missing?: boolean) => void; onEvidence: (id: EvidenceId) => void; onExposures?: () => void; onFcm?: () => void; cftcEnabled: boolean }) {
+export default function RiskWorkbench({ data, profile, onInspect, onEvidence, onExposures, onFcm, cftcEnabled, asOf = '' }: { asOf?: string; data: RiskData; profile: RiskProfile; onInspect: (id: string, missing?: boolean) => void; onEvidence: (id: EvidenceId) => void; onExposures?: () => void; onFcm?: () => void; cftcEnabled: boolean }) {
   const model = useMemo(() => buildRiskResearchModel(profile, data), [profile, data]);
   const allMetrics = [...new Map<string, Measure>((model.drivers.flatMap(d => d.metrics) as Measure[]).map(m => [m.id, m])).values()];
   const [mode, setMode] = useState('dashboard'), [driverId, setDriverId] = useState('all');
+  const [timelineVisited, setTimelineVisited] = useState(false);
   const [measureId, setMeasureId] = useState(() => allMetrics.find(m => finite(m.value))?.id || allMetrics[0]?.id || '');
   const driver = model.drivers.find(d => d.id === driverId);
   const metrics: Measure[] = driver?.metrics || allMetrics;
@@ -112,7 +106,7 @@ export default function RiskWorkbench({ data, profile, onInspect, onEvidence, on
   const sources = [...new Map((metric?.sources || []).map(source => [[source.documentUrl || source.url || '', source.accession, source.tag, source.start, source.end, source.unit, source.value].join(':'), source])).values()];
   return <section className={s.shell} aria-label="Business model risk workbench">
     <header className={s.head}><div><span className={s.eyebrow}><ChartNoAxesCombined size={15}/> Key metrics</span><h2>{model.lens.label}</h2></div><div className={s.scope}><strong>{model.coverage.available}<span>/{model.coverage.total}</span></strong><span>available measures</span><time dateTime={end}>{end || 'Period unavailable'}</time></div></header>
-    <div className={s.modeBar} aria-label="Risk research view">{[['dashboard', 'Dashboard', Layers3], ['changes', 'Changes', Activity], ['coverage', 'Coverage', Database]].map(([id, label, Icon]) => { const Glyph = Icon as typeof Layers3; return <button key={String(id)} aria-pressed={mode === id} onClick={() => setMode(String(id))}><Glyph size={16}/>{String(label)}</button>; })}</div>
+    <div className={s.modeBar} aria-label="Risk research view">{[['dashboard', 'Dashboard', Layers3], ['timeline', 'Risk timeline', Activity], ['coverage', 'Coverage', Database]].map(([id, label, Icon]) => { const Glyph = Icon as typeof Layers3; return <button key={String(id)} aria-pressed={mode === id} onClick={() => { setMode(String(id)); if (id === 'timeline') setTimelineVisited(true); }}><Glyph size={16}/>{String(label)}</button>; })}</div>
     {mode === 'dashboard' && <div className={s.dashboard}>
       <nav className={s.filters} aria-label="Business-specific risk drivers"><button aria-pressed={driverId === 'all'} onClick={() => setDriverId('all')}>All metrics</button>{model.drivers.map(d => <button key={d.id} aria-pressed={driverId === d.id} onClick={() => { setDriverId(d.id); setMeasureId(d.metrics.find(m => finite(m.value))?.id || d.metrics[0]?.id || ''); }}>{d.label}<span>{d.metrics.filter(m => finite(m.value)).length}/{d.metrics.length}</span></button>)}</nav>
       <div className={s.measures} aria-label="Key financial measures">{metrics.map(m => <button key={m.id} aria-pressed={metric?.id === m.id} onClick={() => setMeasureId(m.id)} className={!finite(m.value) ? s.missingMeasure : undefined}>
@@ -129,7 +123,7 @@ export default function RiskWorkbench({ data, profile, onInspect, onEvidence, on
         <DebtSnapshot data={data} onOpen={() => onEvidence('maturities')}/>
       </div>
     </div>}
-    {mode === 'changes' && <div className={s.changeView}><div className={s.viewMeta}><span>{profile.basis === 'ttm' ? 'Prior quarter end → latest · Overlapping TTM flows' : 'Prior fiscal year → latest'}</span><span>Gray: prior · Gold: latest · Own scales</span></div>{model.changes.length ? <div className={s.changes}>{model.changes.map(change => <button key={change.id} onClick={() => { setDriverId('all'); setMeasureId(change.id); setMode('dashboard'); }}><span>{change.label}</span><strong>{changeValue(change.delta, change.format)}</strong><ChangeBars prior={change.prior} current={change.value} format={change.format}/><div><small>{value(change.prior, change.format)}</small><small>{value(change.value, change.format)}</small></div></button>)}</div> : <div className={s.noHistory}>Adjacent compatible observations unavailable</div>}</div>}
+    {timelineVisited && <div hidden={mode !== 'timeline'}><RiskTimelineWorkspace key={`${data.ticker}:${profile.basis}:${asOf}`} data={data} profile={profile} asOf={asOf} onInspect={onInspect}/></div>}
     {mode === 'coverage' && <div className={s.coverageView}><div className={s.viewMeta}>Available inputs · Coverage is not a risk grade</div><div className={s.coverageRows}>{model.drivers.map(d => { const available = d.metrics.filter(m => finite(m.value)).length; return <div key={d.id}><strong>{d.label}</strong><div className={s.coverageTrack} role="img" aria-label={available + ' of ' + d.metrics.length + ' measures available'}><i style={{ width: available / Math.max(1, d.metrics.length) * 100 + '%' }}/></div><span>{available}/{d.metrics.length}</span></div>; })}</div><details className={s.inspector}><summary>Evidence gaps · {model.gaps.length}</summary>{model.gaps.map(gap => <div className={s.gap} key={gap.id}><Link href={!cftcEnabled && gap.href.includes('view=fcm') ? '/filings/' + data.ticker : gap.href} prefetch={false} onClick={event => openReview(event, gap.href)}>{gap.label}<ArrowUpRight size={13}/></Link><p>{gap.detail}</p></div>)}</details></div>}
     <nav className={s.evidenceNav} aria-label="Open supporting risk evidence"><span>Evidence</span><button onClick={() => onEvidence('maturities')}>Debt</button><button onClick={() => onEvidence('notes')}>Credit & FX</button>{profile.industry.isBank && <button onClick={() => onEvidence('bank')}>Call Reports</button>}<button onClick={() => onEvidence('markets')}>Funding{cftcEnabled ? ' & swaps' : ''}</button>{cftcEnabled && <button onClick={() => onEvidence('connections')}>CFTC</button>}{onExposures && <button onClick={onExposures}>Exposures</button>}</nav>
     <details className={s.limitations}><summary>Market links, basis & scope</summary><p>{model.lens.description}</p><p>Coverage counts compatible values, not safety. Measures have separate scales and are never added into a score. Card changes compare adjacent compatible observations; each sparkline shows its own reporting history.</p><div className={s.channels}>{model.marketChannels.filter(channel => cftcEnabled || !/cftc|derivatives/i.test(channel.href + channel.id)).map(channel => <div key={channel.id}><Link href={channel.href} prefetch={false} onClick={event => openReview(event, channel.href)}>{channel.label}<ArrowUpRight size={13}/></Link><p>{channel.mechanism}</p></div>)}</div>{model.limitations.map(note => <p key={note}>{note}</p>)}</details>

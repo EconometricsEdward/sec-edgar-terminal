@@ -1,0 +1,19 @@
+.coverage { margin-top: 20px; border-top: 1px solid var(--r-line); padding-top: 18px; }
+.coverageHeading { display: flex; justify-content: space-between; gap: 12px; font-size: 12px; margin-bottom: 12px; }
+.coverageHeading span { color: var(--r-muted); }
+.reports { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+.report { border: 1px solid var(--r-line); border-radius: 8px; padding: 12px; min-width: 0; background: var(--r-panel); }
+.report > a { display: flex; align-items: center; justify-content: space-between; gap: 6px; color: var(--r-text); font-size: 11px; text-decoration: none; }
+.report > a:hover { color: var(--r-accent); }
+.report > small { display: block; font-size: 10px; color: var(--r-muted); margin: 6px 0 12px; }
+.topics { display: grid; gap: 7px; font-size: 10px; }
+.topics > span { display: flex; justify-content: space-between; gap: 8px; color: var(--r-muted); }
+.topics strong { font-weight: 500; }
+.topics [data-status='differed'] strong { color: var(--r-accent); }
+.topics [data-status='unavailable'] strong, .failure { color: var(--r-bad); }
+.failure { font-size: 11px; }
+.coverage details { font-size: 11px; color: var(--r-muted); margin-top: 12px; line-height: 1.6; }
+.coverage summary { cursor: pointer; color: var(--r-text); }
+.coverage a:focus-visible, .coverage summary:focus-visible { outline: 2px solid var(--r-accent); outline-offset: 4px; }
+@media (max-width: 1000px) { .reports { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 600px) { .reports { grid-template-columns: 1fr; } }

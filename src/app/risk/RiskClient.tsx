@@ -47,7 +47,7 @@ export default function RiskClient({ initialTicker = '', initialView = 'overview
     }
     const controller = new AbortController();
     setLoading(true); setError(''); setData(null); setExported(false); setExplorerOpen(false);
-    fetch(`/api/risk?ticker=${encodeURIComponent(query)}&v=${RISK_VERSION}&evidence=1`, { signal: controller.signal })
+    fetch(`/api/risk?ticker=${encodeURIComponent(query)}&v=${RISK_VERSION}&evidence=1&timeline=1`, { signal: controller.signal })
       .then(async res => { const body = await res.json(); if (!res.ok) throw new Error(body.error || 'Could not load the risk profile.'); return body; })
       .then((body: RiskData) => {
         if (controller.signal.aborted) return;
@@ -138,14 +138,14 @@ export default function RiskClient({ initialTicker = '', initialView = 'overview
       {basis === 'ttm' && period && visibleData.sourceCoverage?.latestFilingReportDate && visibleData.sourceCoverage.latestFilingReportDate > period.end && <div className={s.notice}><CircleAlert size={17}/><span>A newer filing reports through {visibleData.sourceCoverage.latestFilingReportDate}. This profile still uses {period.end} because compatible inputs from the newer filing could not be verified.</span></div>}
       {!!visibleData.sourceCoverage?.notices?.length && <details className={s.disclosure}><summary>Reporting sources & coverage</summary>{visibleData.sourceCoverage.notices.map((notice, index) => <p key={index}>{notice}</p>)}<div className={s.sourceLinks}>{visibleData.sourceCoverage.continuity?.sourceUrl && <a href={visibleData.sourceCoverage.continuity.sourceUrl} target="_blank" rel="noreferrer">Company history source <ArrowUpRight size={13}/></a>}{visibleData.sourceCoverage.filingFallback?.documentUrl && <a href={visibleData.sourceCoverage.filingFallback.documentUrl} target="_blank" rel="noreferrer">Reviewed filing <ArrowUpRight size={13}/></a>}</div></details>}
       {age != null && age > (basis === 'ttm' ? 180 : 550) && <div className={s.notice}><CircleAlert size={17} /> The latest available period ended {age} days before retrieval. Check for newer or untagged filings.</div>}
-      <RiskWorkbench key={`briefing:${visibleData.ticker}:${basis}`} data={visibleData} profile={profile} onInspect={inspect} onEvidence={openEvidence} onExposures={() => changeTab('exposures')} onFcm={() => changeTab('fcm')} cftcEnabled={cftcEnabled}/>
+      <RiskWorkbench key={`briefing:${visibleData.ticker}`} data={visibleData} profile={profile} asOf={exposureAsOf} onInspect={inspect} onEvidence={openEvidence} onExposures={() => changeTab('exposures')} onFcm={() => changeTab('fcm')} cftcEnabled={cftcEnabled}/>
       <RiskProfileOverview data={visibleData} profile={profile} onInspect={inspect} evidenceSelection={evidenceSelection} onEvidence={openEvidence} cftcEnabled={cftcEnabled} asOf={exposureAsOf} onExposures={() => changeTab('exposures')} metricExplorer={
         <div ref={explorerRef} className={s.workspace}>
           <div className={s.explorerHeading}><div><h2>Metric explorer</h2></div><button className={s.button} aria-expanded={explorerOpen} aria-controls="risk-metric-evidence" onClick={() => setExplorerOpen(!explorerOpen)}>{explorerOpen ? 'Close explorer' : 'All metrics'}<Compass size={16}/></button></div>
           {explorerOpen && <div id="risk-metric-evidence"><MetricExplorer key={`${visibleData.ticker}:${basis}:${inspectVersion}`} data={visibleData} profile={profile} selected={selected} onSelect={setSelected} pillar={pillar} onPillar={setPillar} onlyMissing={onlyMissing} onOnlyMissing={setOnlyMissing} /></div>}
         </div>
       } />
-      <footer className={s.footer}><ShieldCheck size={16}/><details><summary>Sources & scope</summary><p>Sources retain their own reporting dates and entity scopes. Screens are research prompts, not credit ratings or default probabilities. Missing figures are not treated as zero. The profile export covers SEC financial measures; supplementary sources link to their own evidence. The export includes the business-model research questions and source gaps. <a href={`/api/risk?ticker=${encodeURIComponent(visibleData.ticker)}&v=${RISK_VERSION}&evidence=1`} target="_blank" rel="noreferrer">View SEC profile data</a></p></details></footer>
+      <footer className={s.footer}><ShieldCheck size={16}/><details><summary>Sources & scope</summary><p>Sources retain their own reporting dates and entity scopes. Screens are research prompts, not credit ratings or default probabilities. Missing figures are not treated as zero. The profile export covers SEC financial measures; supplementary sources link to their own evidence. The export includes the business-model research questions and source gaps. <a href={`/api/risk?ticker=${encodeURIComponent(visibleData.ticker)}&v=${RISK_VERSION}&evidence=1&timeline=1`} target="_blank" rel="noreferrer">View SEC profile data</a></p></details></footer>
     </>}
   </div>;
 }
