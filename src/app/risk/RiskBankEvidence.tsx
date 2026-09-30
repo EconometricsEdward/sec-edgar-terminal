@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { Building2, Search } from 'lucide-react';
 import { readRiskEvidence } from './riskEvidenceClient.js';
 import { isBankDirectory } from '../../utils/bank/directory.js';
+import RiskBankPeers from './RiskBankPeers';
 import s from './RiskIntelligence.module.css';
 
 type BankPoint = { date: string; value: number | null };
@@ -87,7 +88,8 @@ export default function RiskBankEvidence({ companyName, ticker, companyPeriod }:
         <p className={s.caption}>Period {period} · Retrieved {view.report.retrievedAt?.slice(0, 10)} · Each trend uses its own scale</p>
         <details className={s.method}><summary>Exact history & definitions</summary><div className={s.tableScroll}><table><thead><tr><th>Measure / definition</th>{[...dates].sort().map((date: string) => <th key={date}>{date}</th>)}</tr></thead><tbody>{view.cards.map(card => <tr key={card.key}><th scope="row">{card.label}<small className={s.bankDefinition}>{card.formula}</small></th>{[...dates].sort().map((date: string) => { const value = card.history.find((row: any) => row.date === date)?.value; return <td key={date}>{value == null ? 'Unavailable' : `${value.toFixed(2)}%`}</td>; })}</tr>)}</tbody></table></div><p>Percentages use the bank’s own reporting scope. CET1 is shown as reported, without an inferred compliance or supervisory rating. Bank and SEC company figures are not reconciled or combined. Nonaccruals use all loans before allowance. Allowance coverage uses held-for-investment loans, and brokered deposits use domestic deposits. Missing inputs and nonpositive denominators remain unavailable. Community Bank Leverage Ratio reporters may not report risk-based capital ratios.</p></details>
       </> : <div className={s.unavailable}><h3>{view.report?.status === 'review' ? 'This report requires financial review.' : 'This quarter is not prepared yet.'}</h3><p>Validated metrics are available in BankScope when preparation completes. Open the bank workspace to view coverage or request preparation.</p></div>}
-      <div className={s.links}><Link prefetch={false} href={`/analysis/banks/${rssd}?period=${period}`}>Open full bank analysis</Link><Link prefetch={false} href={`/analysis/banks/${rssd}?view=exposures&period=${period}`}>Loan & funding concentrations</Link><Link prefetch={false} href={`/analysis/banks/${rssd}?view=compare`}>Peer benchmarks</Link><Link prefetch={false} href={`/analysis/banks/${rssd}?view=organization`}>Verify organization</Link>{view.valid && view.sourceUrl && <a href={view.sourceUrl} target="_blank" rel="noreferrer">FFIEC source report</a>}</div>
+      {period && <RiskBankPeers key={rssd} rssd={rssd} period={period} bankName={bank.name}/>}
+      <div className={s.links}><Link prefetch={false} href={`/analysis/banks/${rssd}?period=${period}`}>Open full bank analysis</Link><Link prefetch={false} href={`/analysis/banks/${rssd}?view=exposures&period=${period}`}>Loan & funding concentrations</Link><Link prefetch={false} href={`/analysis/banks/${rssd}?view=compare&period=${period}`}>Peer benchmarks</Link><Link prefetch={false} href={`/analysis/banks/${rssd}?view=organization`}>Verify organization</Link>{view.valid && view.sourceUrl && <a href={view.sourceUrl} target="_blank" rel="noreferrer">FFIEC source report</a>}</div>
     </>}
     <div className={s.links}><Link prefetch={false} href="/analysis/banks">Browse all banks</Link></div>
   </>;

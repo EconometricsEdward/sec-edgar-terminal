@@ -5,8 +5,8 @@
 .scope { display:grid; grid-template-columns:auto auto; gap:0 10px; align-items:center; font-size:11px; color:var(--r-muted); }
 .scope strong { grid-row:span 2; font-size:28px; color:var(--r-text); font-weight:550; font-variant-numeric:tabular-nums; }
 .scope strong span { font-size:20px; color:var(--r-muted); }
-.modeBar { display:flex; gap:14px; padding:0 24px; border-bottom:1px solid var(--r-line); }
-.modeBar button { display:flex; align-items:center; gap:7px; padding:12px 2px; font-size:13px; color:var(--r-muted); border-bottom:2px solid transparent; }
+.modeBar { display:flex; gap:14px; padding:0 24px; border-bottom:1px solid var(--r-line); overflow-x:auto; scrollbar-width:thin; }
+.modeBar button { display:flex; flex-shrink:0; align-items:center; gap:7px; padding:12px 2px; font-size:13px; color:var(--r-muted); border-bottom:2px solid transparent; }
 .modeBar button[aria-pressed=true] { color:var(--r-accent); border-color:var(--r-accent); }
 .dashboard,.changeView,.coverageView { padding:18px 24px; }
 .filters { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:14px; }
