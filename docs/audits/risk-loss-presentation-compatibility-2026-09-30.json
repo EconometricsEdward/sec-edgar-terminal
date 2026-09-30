@@ -1,0 +1,309 @@
+{
+  "fromVersion": "risk-workspace-v11",
+  "toVersion": "risk-workspace-v12",
+  "cacheNamespace": "risk-workspace-v9",
+  "profiles": 48,
+  "results": [
+    {
+      "ticker": "AAPL",
+      "preservedFinancialValuesAndSources": true,
+      "preservedClocks": true,
+      "changes": []
+    },
+    {
+      "ticker": "AFL",
+      "preservedFinancialValuesAndSources": true,
+      "preservedClocks": true,
+      "changes": []
+    },
+    {
+      "ticker": "AIG",
+      "preservedFinancialValuesAndSources": true,
+      "preservedClocks": true,
+      "changes": []
+    },
+    {
+      "ticker": "AIZ",
+      "preservedFinancialValuesAndSources": true,
+      "preservedClocks": true,
+      "changes": []
+    },
+    {
+      "ticker": "ALL",
+      "preservedFinancialValuesAndSources": true,
+      "preservedClocks": true,
+      "changes": []
+    },
+    {
+      "ticker": "AMT",
+      "preservedFinancialValuesAndSources": true,
+      "preservedClocks": true,
+      "changes": []
+    },
+    {
+      "ticker": "AMZN",
+      "preservedFinancialValuesAndSources": true,
+      "preservedClocks": true,
+      "changes": []
+    },
+    {
+      "ticker": "AXP",
+      "preservedFinancialValuesAndSources": true,
+      "preservedClocks": true,
+      "changes": []
+    },
+    {
+      "ticker": "BA",
+      "preservedFinancialValuesAndSources": true,
+      "preservedClocks": true,
+      "changes": []
+    },
+    {
+      "ticker": "BAC",
+      "preservedFinancialValuesAndSources": true,
+      "preservedClocks": true,
+      "changes": []
+    },
+    {
+      "ticker": "BRK-B",
+      "preservedFinancialValuesAndSources": true,
+      "preservedClocks": true,
+      "changes": []
+    },
+    {
+      "ticker": "C",
+      "preservedFinancialValuesAndSources": true,
+      "preservedClocks": true,
+      "changes": [
+        {
+          "basis": "current",
+          "id": "loss_years",
+          "from": {
+            "level": "low",
+            "label": "Within screen"
+          },
+          "to": {
+            "level": "info",
+            "label": "Context"
+          }
+        }
+      ]
+    },
+    {
+      "ticker": "CAT",
+      "preservedFinancialValuesAndSources": true,
+      "preservedClocks": true,
+      "changes": []
+    },
+    {
+      "ticker": "CBRE",
+      "preservedFinancialValuesAndSources": true,
+      "preservedClocks": true,
+      "changes": []
+    },
+    {
+      "ticker": "COST",
+      "preservedFinancialValuesAndSources": true,
+      "preservedClocks": true,
+      "changes": []
+    },
+    {
+      "ticker": "CVX",
+      "preservedFinancialValuesAndSources": true,
+      "preservedClocks": true,
+      "changes": []
+    },
+    {
+      "ticker": "D",
+      "preservedFinancialValuesAndSources": true,
+      "preservedClocks": true,
+      "changes": []
+    },
+    {
+      "ticker": "DAL",
+      "preservedFinancialValuesAndSources": true,
+      "preservedClocks": true,
+      "changes": []
+    },
+    {
+      "ticker": "F",
+      "preservedFinancialValuesAndSources": true,
+      "preservedClocks": true,
+      "changes": []
+    },
+    {
+      "ticker": "GE",
+      "preservedFinancialValuesAndSources": true,
+      "preservedClocks": true,
+      "changes": []
+    },
+    {
+      "ticker": "GM",
+      "preservedFinancialValuesAndSources": true,
+      "preservedClocks": true,
+      "changes": []
+    },
+    {
+      "ticker": "GS",
+      "preservedFinancialValuesAndSources": true,
+      "preservedClocks": true,
+      "changes": []
+    },
+    {
+      "ticker": "HCA",
+      "preservedFinancialValuesAndSources": true,
+      "preservedClocks": true,
+      "changes": []
+    },
+    {
+      "ticker": "HHH",
+      "preservedFinancialValuesAndSources": true,
+      "preservedClocks": true,
+      "changes": []
+    },
+    {
+      "ticker": "IBKR",
+      "preservedFinancialValuesAndSources": true,
+      "preservedClocks": true,
+      "changes": []
+    },
+    {
+      "ticker": "JPM",
+      "preservedFinancialValuesAndSources": true,
+      "preservedClocks": true,
+      "changes": []
+    },
+    {
+      "ticker": "MCD",
+      "preservedFinancialValuesAndSources": true,
+      "preservedClocks": true,
+      "changes": []
+    },
+    {
+      "ticker": "MET",
+      "preservedFinancialValuesAndSources": true,
+      "preservedClocks": true,
+      "changes": []
+    },
+    {
+      "ticker": "MRNA",
+      "preservedFinancialValuesAndSources": true,
+      "preservedClocks": true,
+      "changes": []
+    },
+    {
+      "ticker": "MS",
+      "preservedFinancialValuesAndSources": true,
+      "preservedClocks": true,
+      "changes": []
+    },
+    {
+      "ticker": "MSFT",
+      "preservedFinancialValuesAndSources": true,
+      "preservedClocks": true,
+      "changes": []
+    },
+    {
+      "ticker": "NEE",
+      "preservedFinancialValuesAndSources": true,
+      "preservedClocks": true,
+      "changes": []
+    },
+    {
+      "ticker": "NVDA",
+      "preservedFinancialValuesAndSources": true,
+      "preservedClocks": true,
+      "changes": []
+    },
+    {
+      "ticker": "O",
+      "preservedFinancialValuesAndSources": true,
+      "preservedClocks": true,
+      "changes": []
+    },
+    {
+      "ticker": "PGR",
+      "preservedFinancialValuesAndSources": true,
+      "preservedClocks": true,
+      "changes": []
+    },
+    {
+      "ticker": "PLD",
+      "preservedFinancialValuesAndSources": true,
+      "preservedClocks": true,
+      "changes": []
+    },
+    {
+      "ticker": "PRU",
+      "preservedFinancialValuesAndSources": true,
+      "preservedClocks": true,
+      "changes": []
+    },
+    {
+      "ticker": "RIVN",
+      "preservedFinancialValuesAndSources": true,
+      "preservedClocks": true,
+      "changes": []
+    },
+    {
+      "ticker": "SBUX",
+      "preservedFinancialValuesAndSources": true,
+      "preservedClocks": true,
+      "changes": []
+    },
+    {
+      "ticker": "SCHW",
+      "preservedFinancialValuesAndSources": true,
+      "preservedClocks": true,
+      "changes": []
+    },
+    {
+      "ticker": "SO",
+      "preservedFinancialValuesAndSources": true,
+      "preservedClocks": true,
+      "changes": []
+    },
+    {
+      "ticker": "SOFI",
+      "preservedFinancialValuesAndSources": true,
+      "preservedClocks": true,
+      "changes": []
+    },
+    {
+      "ticker": "TRV",
+      "preservedFinancialValuesAndSources": true,
+      "preservedClocks": true,
+      "changes": []
+    },
+    {
+      "ticker": "UAL",
+      "preservedFinancialValuesAndSources": true,
+      "preservedClocks": true,
+      "changes": []
+    },
+    {
+      "ticker": "UNH",
+      "preservedFinancialValuesAndSources": true,
+      "preservedClocks": true,
+      "changes": []
+    },
+    {
+      "ticker": "WFC",
+      "preservedFinancialValuesAndSources": true,
+      "preservedClocks": true,
+      "changes": []
+    },
+    {
+      "ticker": "WMT",
+      "preservedFinancialValuesAndSources": true,
+      "preservedClocks": true,
+      "changes": []
+    },
+    {
+      "ticker": "XOM",
+      "preservedFinancialValuesAndSources": true,
+      "preservedClocks": true,
+      "changes": []
+    }
+  ]
+}

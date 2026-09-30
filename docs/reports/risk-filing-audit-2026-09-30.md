@@ -115,3 +115,11 @@ The calculation contract advances to `risk-workspace-v11`, but the existing `ris
 The audit made 48 sequential profile reads between approximately 07:51 and 08:04 UTC, plus a small control/UI read set. Original SEC downloads and offline replays are separate from the site's storage. Deployment and verification timestamps belong in the PR release record; the existing Sep 30 06:00 to Oct 1 06:00 cost-observation window is not restarted.
 
 Run `npm run check` before release. Exact-commit CI, deployment state and live API/browser verification are recorded in the pull request rather than inferred from local arithmetic or a successful build.
+
+### Live-verification follow-up: incomplete loss histories
+
+PR #187 passed exact-commit CI and deployed as `9dda2ed1`. Nine live issuer controls passed. Citi's first attempt encountered a transient shared SEC-dispatch timeout; the normal retry after its short degraded-cache expiry recovered the June filing. The page retained the old date and disclosed the temporary coverage gap while that read was unavailable.
+
+Live browser review then exposed a separate presentation issue: Citi's restored June balance sheet coexists with an unavailable latest TTM earnings window. Its count of zero losses in the **available historical windows** was correct, but the lower earnings row labeled that incomplete history “Within screen.” Incomplete histories with zero observed losses now show **Context**. The count and missing-observation note remain intact; known losses retain their warnings.
+
+The v12 presentation contract has a bounded, read-only v11 adapter. It changes neither financial numbers nor source evidence, acquisition/calculation timestamps, or the existing v9 cache slot, and does not force a new SEC source rebuild. A [48-profile compatibility replay](../audits/risk-loss-presentation-compatibility-2026-09-30.json) preserves all financial values, series, sources and clocks; Citi is the only sampled profile whose classification changes. Fresh and compatible cached responses receive the same correction. Unknown or malformed old contracts do not use the adapter.

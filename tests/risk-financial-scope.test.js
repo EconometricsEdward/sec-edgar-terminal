@@ -72,7 +72,7 @@ test('narrow cash labels and selected borrowing scope stay explicit, without new
   assert.equal(riskCashLabel({ sources: [source('CashAndCashEquivalentsAtCarryingValue')] }), 'Cash and equivalents');
   assert.match(RISK_DEBT_SCOPE_NOTE, /subordinated debt/);
   assert.equal(RISK_CACHE_VERSION, 'risk-workspace-v9');
-  assert.equal(RISK_VERSION, 'risk-workspace-v11');
+  assert.equal(RISK_VERSION, 'risk-workspace-v12');
 });
 
 test('insurer adjusted operating earnings cannot enter generic operating-income or stress inputs', () => {
