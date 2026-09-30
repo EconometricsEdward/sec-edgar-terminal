@@ -1,4 +1,5 @@
 import { selectFinancialFact } from './xbrlPeriods.js';
+import { RISK_DEBT_SCOPE_NOTE } from './riskFinancialScope.js';
 
 // These concepts have an explicit current/noncurrent meaning in the SEC
 // taxonomy. LongTermDebt is an including-current total, not noncurrent debt.
@@ -133,8 +134,8 @@ export function riskDebtBalances(facts, period) {
   let total = calculate(facts, [current, noncurrent], period, 'Total debt', 'Current debt + noncurrent debt', (a, b) => a + b);
   if (total.value == null && !family.contradictoryTotal) total = calculate(facts, [family.total, shortTerm], period, 'Total debt',
     'Long-term debt including current maturities + reported short-term borrowings', (a, b) => a + b);
-  const scope = family.lease && family.score > 0 ? 'Includes lease obligations within the reported debt concepts.'
-    : 'Debt scope follows the reported concepts; current debt may include current lease obligations. Separately reported lease liabilities are not added.';
+  const scope = (family.lease && family.score > 0 ? 'Includes lease obligations within the reported debt concepts.'
+    : 'Debt scope follows the reported concepts; current debt may include current lease obligations. Separately reported lease liabilities are not added.') + ' ' + RISK_DEBT_SCOPE_NOTE;
   return Object.fromEntries(Object.entries({ current, noncurrent, total }).map(([key, point]) => [key,
     { ...point, ...(point.value != null ? { note: scope, sources: point.sources.map((source) => ({ ...source, scopeNote: scope })) } : {}) }]));
 }

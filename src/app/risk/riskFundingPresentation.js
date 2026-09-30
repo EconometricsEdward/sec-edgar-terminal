@@ -1,5 +1,6 @@
 // Financial-risk presentation derived only from dated, source-linked SEC rows.
 // No thresholds, forecasts, contractual DSCR, or regulatory ratings are inferred.
+import { RISK_CAPITAL_PURCHASE_NOTE, riskComparisonIssue } from '../../utils/riskFinancialScope.js';
 const finite = (value) => typeof value === 'number' && Number.isFinite(value);
 const FLOW_KEYS = new Set(['netIncome', 'operatingCashFlow', 'operatingIncome', 'interestExpense', 'capitalExpenditure', 'dividendsPaid', 'cashInterestPaid', 'revenue', 'provision', 'netInterestIncome', 'noninterestIncome', 'noninterestExpense']);
 const KEYS = ['cash', 'currentMarketableSecurities', 'noncurrentMarketableSecurities', 'currentDebt', 'noncurrentDebt', 'totalDebt', 'currentAssets', 'currentLiabilities', 'totalAssets', 'totalLiabilities', 'equity', 'consolidatedEquity', ...FLOW_KEYS,
@@ -44,10 +45,11 @@ export function buildRiskFundingPresentation(profile = {}, { sic } = {}) {
     const candidate = index > 0 ? series[index - 1] : null;
     const days = candidate && latest ? (Date.parse(latest.end) - Date.parse(candidate.end)) / 86400000 : null;
     const consecutive = profile.basis === 'annual' ? days >= 300 && days <= 400 : days >= 60 && days <= 120;
-    const prior = consecutive && finite(candidate?.value) ? candidate.value : null;
+    const comparisonIssue = latest && candidate ? riskComparisonIssue(latest, candidate) : null;
+    const prior = consecutive && finite(candidate?.value) && !comparisonIssue ? candidate.value : null;
     const value = finite(latest?.value) ? latest.value : null;
     return { id, label, format, value, prior, delta: value != null && prior != null ? value - prior : null,
-      end: latestEnd, formula: latest?.formula || formula, sources: latest?.sources || [], series, note, metricId,
+      end: latestEnd, formula: latest?.formula || formula, sources: latest?.sources || [], series, note: [note, comparisonIssue].filter(Boolean).join(' '), metricId,
       gap: value == null ? 'Compatible reported inputs are unavailable for this date and reporting basis.' : null };
   };
   const calc = (id, label, keys, fn, format, formula, note = '') => fromSeries(id, label, calculatedSeries(keys, fn, formula), format, formula, note);
@@ -71,13 +73,13 @@ export function buildRiskFundingPresentation(profile = {}, { sic } = {}) {
     creditLossProvision: finite(at('provision', period.end)?.value) ? at('provision', period.end).value : null,
   }));
   const liquidityRatios = [
-    calc('cash_current_debt', 'Cash / current debt', ['cash', 'currentDebt'], divide, 'x', 'Cash and equivalents / current debt', 'Ending cash compared with debt classified as current. Cash restrictions and refinancing availability are separate.'),
+    calc('cash_current_debt', 'Cash / current debt', ['cash', 'currentDebt'], divide, 'x', 'Selected reported cash balance / current debt', 'Ending cash compared with debt classified as current. Cash restrictions and refinancing availability are separate.'),
     calc('liquid_current_debt', 'Cash + current investments / current debt', ['cash', 'currentMarketableSecurities', 'currentDebt'], (cash, securities, debt) => divide(cash + securities, debt), 'x', '(Cash + current investments) / current debt', 'Current investments follow the cited filing scope and may include nonmarketable assets. They are included at reported value without liquidity haircuts; this is not a measure of immediately available cash. Noncurrent investments are excluded.'),
-    calc('current_debt_share', 'Current debt / total debt', ['currentDebt', 'totalDebt'], divide, 'pct', 'Current debt / total debt', 'Current balance-sheet classification is not a contractual maturity ladder.'),
+    calc('current_debt_share', 'Current debt / reported debt', ['currentDebt', 'totalDebt'], divide, 'pct', 'Current debt / selected reported debt', 'Current balance-sheet classification is not a contractual maturity ladder; the denominator follows the selected borrowing concepts.'),
     existing('current_ratio'),
   ];
   const obligationsRatios = [existing('interest_coverage'), existing('ocf_to_debt'),
-    calc('fcf_to_debt', 'Cash after capex / debt', ['operatingCashFlow', 'capitalExpenditure', 'totalDebt'], (cash, capex, debt) => capex >= 0 ? divide(cash - capex, debt) : null, 'pct', '(Operating cash flow − cash capital expenditure) / total debt', 'Historical cash generation after reported PP&E purchases, before acquisitions, dividends, buybacks and debt principal. Not a forecast or covenant calculation.'),
+    calc('fcf_to_debt', 'Cash after capex / debt', ['operatingCashFlow', 'capitalExpenditure', 'totalDebt'], (cash, capex, debt) => capex >= 0 ? divide(cash - capex, debt) : null, 'pct', '(Operating cash flow − reported cash capital purchases) / reported debt', `Historical cash generation before acquisitions, dividends, buybacks and debt principal. Not a forecast or covenant calculation. ${RISK_CAPITAL_PURCHASE_NOTE}`),
     calc('fcf_to_current_debt', 'Cash after capex / current debt', ['operatingCashFlow', 'capitalExpenditure', 'currentDebt'], (cash, capex, debt) => capex >= 0 ? divide(cash - capex, debt) : null, 'x', '(Operating cash flow − cash capital expenditure) / current debt', 'Annual or TTM cash flow compared with ending current debt. It does not match scheduled future principal, interest and other commitments and is not debt-service coverage.'),
   ];
   const latestPoint = (series) => series.find((point) => point.end === latestEnd);
@@ -114,7 +116,7 @@ export function buildRiskFundingPresentation(profile = {}, { sic } = {}) {
   const limitations = [
     'Missing facts remain unavailable. Flows use the selected annual or TTM basis; balance-sheet amounts use each corresponding period end.',
     'Debt includes lease obligations when they are part of the cited debt concept. Separately reported operating-lease liabilities are not added. Investment balances may include nonmarketable assets and are not treated as cash.',
-    lens === 'corporate' ? 'Cash after capex uses reported cash PP&E purchases. Dividends are distributions, not scheduled debt service. Lease payments may already be included in operating cash flow; they are not deducted again.'
+    lens === 'corporate' ? `${RISK_CAPITAL_PURCHASE_NOTE} Dividends are distributions, not scheduled debt service. Lease payments may already be included in operating cash flow; they are not deducted again.`
       : 'Financial-company cash flows can be dominated by loans, securities, customer balances and funding movements. Industrial free-cash-flow debt coverage is not applied.',
     ...(lens === 'bank' ? ['CAMELS is used as a public-data organizing framework. These indicators are not supervisory ratings, and the management component has no inferred numerical score.'] : []),
     ...(lens === 'broker' ? ['Broker asset balances are shown separately without assumed netting or collateral haircuts. Consolidated book equity is not regulatory net capital; segregated customer assets are not available for general creditors.'] : []),

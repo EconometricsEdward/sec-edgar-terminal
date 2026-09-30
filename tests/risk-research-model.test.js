@@ -110,7 +110,7 @@ test('download briefing preserves reported dates, source URLs, missing evidence 
   p.reportedBalances.cash = series('CashAndCashEquivalentsAtCarryingValue', [100, 200]);
   const text = riskResearchBrief({ ticker: 'TEST', sic: 2836 }, p);
   assert.match(text, /Reporting end 2025-12-31/);
-  assert.match(text, /Cash & equivalents: \$200\.00/);
+  assert.match(text, /Cash and equivalents: \$200\.00/);
   assert.match(text, /Formula: Reported SEC fact/);
   assert.match(text, /https:\/\/www\.sec\.gov\/Archives/);
   assert.match(text, /Compatible evidence unavailable/);

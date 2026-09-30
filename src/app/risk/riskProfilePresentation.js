@@ -1,5 +1,6 @@
 import { formatRiskValue, riskPeriodLabel } from '../../utils/riskWorkspace.js';
 import { buildRiskFundingPresentation } from './riskFundingPresentation.js';
+import { riskCashLabel, riskComparisonIssue, RISK_DEBT_SCOPE_NOTE } from '../../utils/riskFinancialScope.js';
 
 const finite = (value) => typeof value === 'number' && Number.isFinite(value);
 const valueOf = (value) => finite(value) ? value : null;
@@ -67,7 +68,8 @@ const DIMENSIONS = {
 export function riskMetricComparison(metric, basis = 'annual') {
   const series = (metric?.series || []).map((point) => ({ ...point, value: valueOf(point.value), label: riskPeriodLabel(point) }));
   const current = valueOf(metric?.value);
-  const prior = valueOf(metric?.prior);
+  const comparisonIssue = series.length > 1 ? riskComparisonIssue(series.at(-1), series.at(-2)) : null;
+  const prior = comparisonIssue ? null : valueOf(metric?.prior);
   // Recompute the displayed difference from the two API observations. A missing
   // prior is not replaced by an older, non-adjacent point in the chart.
   const delta = current != null && prior != null ? current - prior : null;
@@ -104,6 +106,8 @@ function balancePresentation(profile, lens) {
   const equity = input(profile, 'equity', ['debt_to_equity', 'bank_equity_assets', 'ins_equity_assets'], ['Stockholders equity']);
   const cash = input(profile, 'cash', ['net_debt', 'cash_to_assets', 'bank_cash_assets'], ['Cash & equivalents', 'Tagged cash balance', 'Cash and equivalents', 'Cash excluding tagged restrictions', 'Narrow tagged cash balance']);
   const debt = input(profile, 'totalDebt', ['net_debt', 'ocf_to_debt'], ['Total debt']);
+  cash.label = riskCashLabel(cash);
+  debt.label = 'Selected reported debt';
   const currentDebt = input(profile, 'currentDebt', [], ['Current debt']);
   const noncurrentDebt = input(profile, 'noncurrentDebt', [], ['Noncurrent debt']);
   const currentSecurities = input(profile, 'currentMarketableSecurities', [], ['Current investments']);
@@ -119,6 +123,7 @@ function balancePresentation(profile, lens) {
   const loans = input(profile, 'loans', ['loans_deposits'], ['Loans, net']);
   const deposits = input(profile, 'deposits', ['loans_deposits'], ['Deposits']);
   const notes = [];
+  if (debt.value != null) notes.push(RISK_DEBT_SCOPE_NOTE);
   /** @type {{ id: string, label: string, value: number, share: number, sources: any[] }[]} */
   const segments = [];
   let reconciliation = null;

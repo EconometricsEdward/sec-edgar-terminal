@@ -1,3 +1,4 @@
+import { riskComparisonIssue } from '../../utils/riskFinancialScope.js';
 const finite = value => typeof value === 'number' && Number.isFinite(value);
 
 export function maturityView(profile, today) {
@@ -26,7 +27,8 @@ export function comparableRiskChanges(profile) {
     if (metric.id === 'loss_years') return [];
     const latest = metric.series?.find(p => p.end === current.end);
     const prior = metric.series?.find(p => p.end === previous.end);
-    if (!finite(latest?.value) || !finite(prior?.value) || !finite(metric.value) || metric.value !== latest.value) return [];
+    if (!finite(latest?.value) || !finite(prior?.value) || !finite(metric.value) || metric.value !== latest.value
+      || riskComparisonIssue(latest, prior)) return [];
     return [{ id: metric.id, label: metric.label, pillar: metric.pillar, format: metric.format,
       deltaFormat: ['pct', 'pp'].includes(metric.format) ? 'pp' : metric.format,
       value: latest.value, prior: prior.value, delta: latest.value - prior.value,
