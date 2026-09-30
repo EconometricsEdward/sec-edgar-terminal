@@ -13,6 +13,7 @@ import { RISK_NOTE_MAX_BYTES } from '../../../utils/riskNoteFacts.js';
 import { riskProfileCachePolicy } from '../../../utils/riskProfileCache.js';
 import { extractRefinancingProfile } from '../../../utils/refinancing/maturities.js';
 import { compactRefinancingProfile } from '../../../utils/refinancing/projection.js';
+import { buildRiskMaturityHistory, hasRiskMaturityHistory } from '../../../utils/riskTimelineMaturities.js';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
@@ -62,13 +63,14 @@ export async function GET(request) {
   if (!rl.allowed) return rateLimitedResponse(rl);
   const scanOnly = params.get('include') === 'disclosures';
   const includeMaturities = params.get('evidence') === '1';
+  const includeTimeline = params.get('timeline') === '1';
   const profileResponse = (data) => response(riskResponseForVersion(data, params.get('v')));
   try {
     if (!scanOnly) {
       const cached = await warmGet(RISK_CACHE_VERSION, ticker);
       // Additive evidence reuses the approved, bounded Risk cache family.
       // Older entries upgrade once in place; no new storage namespace/job.
-      if (canReuseRiskWorkspace(cached, includeMaturities)) return profileResponse(cached);
+      if (canReuseRiskWorkspace(cached, includeMaturities) && (!includeTimeline || hasRiskMaturityHistory(cached))) return profileResponse(cached);
     }
     const entry = await getOperatingTicker(ticker);
     if (!entry) return NextResponse.json({ error: `No SEC operating company matched ${ticker}. Fund tickers are covered on the Funds page.` }, { status: 404 });
@@ -92,6 +94,7 @@ export async function GET(request) {
       // Reuse this request's original registrant facts. Never mix predecessor
       // maturities into a successor schedule or read the 5,000-issuer atlas.
       refinancing: compactRefinancingProfile(extractRefinancingProfile(company, { cik, sic: submissions.sic, financialInstitution: current.industry.isFinancial })),
+      refinancingHistory: buildRiskMaturityHistory(company, submissions, { cik, sic: submissions.sic, financialInstitution: current.industry.isFinancial }),
       version: RISK_VERSION, generatedAt: new Date().toISOString() };
     await warmSet(RISK_CACHE_VERSION, ticker, data, riskProfileCachePolicy(data).ttlSeconds);
     return profileResponse(data);
