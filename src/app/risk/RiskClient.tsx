@@ -16,6 +16,7 @@ import { downloadRiskFile } from './riskDownload';
 import { normalizeRiskView, parseRiskLocation, riskViewPath } from './riskNavigation.js';
 
 const MetricExplorer = dynamic(() => import('./RiskPanels').then(m => m.MetricExplorer), { loading: () => <p className={s.inlineLoading} role="status">Opening metric evidence…</p> });
+const RiskChangeTimeline = dynamic(() => import('./RiskChangeTimeline'), { loading: () => <p className={s.inlineLoading} role="status">Opening risk timeline…</p> });
 const FcmCapitalPanel = dynamic(() => import('./FcmCapitalPanel'), { loading: () => <p className={s.inlineLoading} role="status">Loading futures broker capital…</p> });
 const CompanyExposureMap = dynamic(() => import('./CompanyExposureMap'), { loading: () => <p className={s.inlineLoading} role="status">Loading company exposures…</p> });
 const TABS = [['overview', 'Risk Profile', ShieldCheck], ['exposures', 'Business Exposures', Network]] as const;
@@ -139,6 +140,7 @@ export default function RiskClient({ initialTicker = '', initialView = 'overview
       {!!visibleData.sourceCoverage?.notices?.length && <details className={s.disclosure}><summary>Reporting sources & coverage</summary>{visibleData.sourceCoverage.notices.map((notice, index) => <p key={index}>{notice}</p>)}<div className={s.sourceLinks}>{visibleData.sourceCoverage.continuity?.sourceUrl && <a href={visibleData.sourceCoverage.continuity.sourceUrl} target="_blank" rel="noreferrer">Company history source <ArrowUpRight size={13}/></a>}{visibleData.sourceCoverage.filingFallback?.documentUrl && <a href={visibleData.sourceCoverage.filingFallback.documentUrl} target="_blank" rel="noreferrer">Reviewed filing <ArrowUpRight size={13}/></a>}</div></details>}
       {age != null && age > (basis === 'ttm' ? 180 : 550) && <div className={s.notice}><CircleAlert size={17} /> The latest available period ended {age} days before retrieval. Check for newer or untagged filings.</div>}
       <RiskWorkbench key={`briefing:${visibleData.ticker}:${basis}`} data={visibleData} profile={profile} onInspect={inspect} onEvidence={openEvidence} onExposures={() => changeTab('exposures')} onFcm={() => changeTab('fcm')} cftcEnabled={cftcEnabled}/>
+      <RiskChangeTimeline key={`timeline:${visibleData.cik}`} ticker={visibleData.ticker}/>
       <RiskProfileOverview data={visibleData} profile={profile} onInspect={inspect} evidenceSelection={evidenceSelection} onEvidence={openEvidence} cftcEnabled={cftcEnabled} asOf={exposureAsOf} onExposures={() => changeTab('exposures')} metricExplorer={
         <div ref={explorerRef} className={s.workspace}>
           <div className={s.explorerHeading}><div><h2>Metric explorer</h2></div><button className={s.button} aria-expanded={explorerOpen} aria-controls="risk-metric-evidence" onClick={() => setExplorerOpen(!explorerOpen)}>{explorerOpen ? 'Close explorer' : 'All metrics'}<Compass size={16}/></button></div>
