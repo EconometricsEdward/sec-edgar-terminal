@@ -50,7 +50,7 @@ const publicationHash = value => digest(Buffer.from(JSON.stringify({
 
 async function publishValue(value, claim, publish) {
   const fetchedAt = value.companies.map(company => company.factsRetrievedAt).sort()[0] || value.sourceSnapshotAt;
-  await publish({ dataset: 'financial', key: REFINANCING_WALL_KEY, claim, payload: value,
+  await publish({ dataset: 'financial', key: REFINANCING_WALL_KEY, claim, payload: value, returnEnvelope: false,
     metadata: { sourceId: 'sec-edgar', sourceUrl: 'https://data.sec.gov/submissions/', fetchedAt,
       // Publication time describes this projection. Individual company clocks
       // and sourceSnapshotAt remain unchanged by a partial update.

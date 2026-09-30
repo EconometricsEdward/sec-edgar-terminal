@@ -5,6 +5,7 @@ import { ArrowUpRight, Building2, GitBranch, Landmark, MapPin } from 'lucide-rea
 import { bankHref } from '../../../utils/bank/viewModel.js';
 import { nicProfile, NIC_ABOUT, NIC_REPORTS, FDIC_DEFINITIONS } from '../../../utils/bank/organizationModel.js';
 import { useSecFilerSearch } from '../../../utils/useSecFilerSearch.js';
+import { loadBankView } from '../../../utils/bank/viewRequests.js';
 import styles from './organization.module.css';
 
 const number = value => value == null ? '—' : new Intl.NumberFormat('en-US').format(value);
@@ -16,18 +17,14 @@ function useOrganization(rssd, part, enabled = true) {
   const identity = `${rssd}:${part}:${attempt}`;
   useEffect(() => {
     if (!enabled) return;
-    const controller = new AbortController(), deadline = setTimeout(() => controller.abort(), 45000);
+    const controller = new AbortController();
     let disposed = false;
-    fetch(`/api/banks/organization?${new URLSearchParams({ rssd: String(rssd), part })}`, { signal: controller.signal })
-      .then(async response => {
-        const body = await response.json();
-        if (!response.ok) throw new Error(body.error || 'Organization data could not be loaded.');
-        if (Number(body.rssd) !== Number(rssd) || body.version !== 'bankscope-organization-1') throw new Error('Organization identity could not be checked.');
+    loadBankView({ kind: 'organization', rssd, part, signal: controller.signal, refresh: attempt > 0 })
+      .then(body => {
         if (!disposed) setResult({ identity, data: body });
-      }).catch(failure => { if (!disposed) setError({ identity, message: failure.name === 'AbortError' ? 'Organization data timed out. Please retry.' : failure.message }); })
-      .finally(() => clearTimeout(deadline));
-    return () => { disposed = true; clearTimeout(deadline); controller.abort(); };
-  }, [rssd, part, identity, enabled]);
+      }).catch(failure => { if (!disposed) setError({ identity, message: failure.message }); });
+    return () => { disposed = true; controller.abort(); };
+  }, [rssd, part, identity, enabled, attempt]);
   return { data: result?.identity === identity ? result.data : null, error: error?.identity === identity ? error.message : '', retry: () => setAttempt(n => n + 1) };
 }
 function External({ href, children, ...props }) { return <a href={href} target="_blank" rel="noreferrer" {...props}>{children}<ArrowUpRight size={14} aria-hidden="true" /></a>; }

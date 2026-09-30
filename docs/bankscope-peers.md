@@ -57,3 +57,22 @@ History uses the same selected-quarter cohort, followed backward by RSSD. It nev
 Ratios retain their published percentage units and reporting basis. Changes are `(current ratio − prior ratio) × 100` basis points, not percentage growth. Annualized YTD ratios are not de-accumulated or relabeled as single-quarter results. Adjacent-quarter changes require both endpoints for that exact pair; first-period changes retain the stated baseline even if it is missing. Missing values remain gaps and are never bridged in charts. Every date independently excludes CBLR/unknown-framework risk-based capital values. Historical peer medians require five valid peers, disclose changing coverage, and never include the subject.
 
 `tests/bankscope-peer-history.test.js` covers fixed-cohort selection, no look-ahead, missing quarters/records, per-date CBLR eligibility, sample thresholds, units, tiny changes, coalesced reads, API validation, failure isolation and gateway authentication. The peer SQL integration test also checks current snapshot pinning across restatements, staging/legacy exclusions, bounded identity/date reads, rejected invalid requests, and existing permission/ingestion fences.
+
+## Short public API reuse
+
+The peers API coalesces identical matching, history and official-reference reads
+within a process. Complete public results are retained for at most 30 seconds
+(and never past the peer publication freshness check), with separate bank,
+quarter and view keys. Limits are 64 entries, 4 MiB total, 512 KiB per entry and
+16 active reads. Every arriving API request still checks the existing IP quota.
+Source timestamps, hashes, selected-quarter snapshot identities and missing
+metric values are unchanged. Queue/preparing states, stale envelopes, failures
+and unavailable reference results are never retained as completed entries.
+
+Explicit no-cache/no-store refreshes bypass completed response reuse. A newer
+refresh fences an older in-flight result so it cannot replace the refreshed
+entry; failed refreshes have no stale fallback. Reused response age is deducted
+from the existing CDN freshness budget rather than restarting it. This bounded
+process cache supplements the existing CDN and browser reuse; it is not a new
+cross-instance history cache. Historical quarters can be restated independently
+of the selected-quarter snapshot.

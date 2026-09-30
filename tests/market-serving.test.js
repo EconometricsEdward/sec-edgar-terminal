@@ -71,7 +71,7 @@ test('prepared projections publish with source dates, retain newer versions and 
   const overview = fixture(20), saved = new Map(); let writes = 0, releases = 0;
   const dependencies = { mode: 'supabase', begin: async () => ({ generation: '1' }),
     read: async (dataset, key) => { assert.equal(dataset, 'financial'); return saved.get(key) || null; },
-    publish: async ({ key, payload, metadata }) => { writes++; saved.set(key, { payload, metadata }); },
+    publish: async ({ key, payload, metadata, returnEnvelope }) => { assert.equal(returnEnvelope, false); writes++; saved.set(key, { payload, metadata }); },
     release: async () => { releases++; }, fallback: async () => { throw new Error('Public read should use prepared projection.'); } };
   await publishMarketServingViews(overview, dependencies);
   assert.equal(writes, 4);

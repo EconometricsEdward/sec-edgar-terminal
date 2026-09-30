@@ -51,7 +51,7 @@ export async function publishDurableMarketOverview(value, {
       expiresAt: new Date(Date.parse(value.generatedAt) + 25 * 3600000).toISOString(),
       parserVersion: MARKET_OVERVIEW_VERSION, calculationVersion: MARKET_VERSION,
       view: 'market-overview', coverage: value.companies.length };
-    await publish({ dataset: 'financial', key: MARKET_DURABLE_KEY, claim, payload: value, metadata,
+    await publish({ dataset: 'financial', key: MARKET_DURABLE_KEY, claim, payload: value, metadata, returnEnvelope: false,
       identityInputs: { version: MARKET_OVERVIEW_VERSION, generatedAt: value.generatedAt,
         membership: value.coverage?.membership_id || null } });
     return value;

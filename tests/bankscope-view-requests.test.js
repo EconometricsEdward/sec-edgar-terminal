@@ -108,3 +108,58 @@ test('one failed UBPR update pauses polling; completed results and closed drawer
   await clock.tick();assert.equal(calls,2);assert.equal(clock.count(),0);ready();
   const closed=watchPeerPreparation({...clock,load:async()=>assert.fail(),onData:()=>{},onPause:()=>{}});closed();await clock.tick();assert.equal(clock.count(),0);
 });
+
+const organizationSource={url:'https://api.fdic.gov/banks/institutions',index:'official',retrievedAt:'2026-09-29T00:00:00Z',updatedAt:'2026-09-28T00:00:00Z',sha256:hash};
+const organization=(part='profile',rssd=451965)=>({rssd,version:'bankscope-organization-1',source:organizationSource,...(part==='profile'
+  ?{bank:{rssd,cert:3511,name:'Example Bank',parent:{rssd:1120754}}}
+  :part==='sec'?{parentRssd:1120754,sec:{status:'ready',candidates:[]}}
+  :{parentRssd:1120754,missing:[],offices:{total:0,regions:[],source:organizationSource},peers:{banks:[],source:organizationSource}})});
+const organizationRequest={kind:'organization',rssd:451965,part:'profile'};
+
+test('organization remounts and concurrent subscribers share bounded reads independently for each bank and part',async()=>{
+  let calls=0,time=0;const urls=[];
+  const load=createBankViewRequests({now:()=>time,fetchImpl:async url=>{
+    calls++;urls.push(url);const p=new URL(url,'https://example.test').searchParams;
+    assert.deepEqual([...p.keys()],['rssd','part']);return Response.json(organization(p.get('part'),Number(p.get('rssd'))));
+  }});
+  const results=await Promise.all(Array.from({length:20},()=>load(organizationRequest)));
+  assert.equal(calls,1);results[0].bank.name='Changed by caller';
+  assert.equal((await load(organizationRequest)).bank.name,'Example Bank');
+  for(const part of ['network','sec']){await load({...organizationRequest,part});await load({...organizationRequest,part});}
+  assert.equal(calls,3);
+  await load({...organizationRequest,rssd:2});assert.equal(calls,4);
+  assert.ok(urls.every(url=>url.startsWith('/api/banks/organization?')&&!url.includes('period=')));
+  time=30000;assert.deepEqual((await load(organizationRequest)).source,organizationSource);assert.equal(calls,5);
+});
+
+test('organization navigation aborts one subscriber without cancelling a reusable shared transport',async()=>{
+  let calls=0,finish;
+  const load=createBankViewRequests({fetchImpl:async()=>{calls++;return new Promise(resolve=>{finish=()=>resolve(Response.json(organization()));});}});
+  const controller=new AbortController();
+  const cancelled=load({...organizationRequest,signal:controller.signal}),active=load(organizationRequest);
+  controller.abort();await assert.rejects(cancelled,{name:'AbortError'});finish();
+  await active;await load(organizationRequest);assert.equal(calls,1);
+});
+
+test('organization missing, partial, stale, invalid and failed responses are retried; explicit refresh bypasses successful reuse',async()=>{
+  let calls=0,body=organization();const modes=[];
+  const load=createBankViewRequests({fetchImpl:async(_url,options)=>{calls++;modes.push(options.cache);return body===null?Response.json({},{status:503}):Response.json(body);}});
+  await load(organizationRequest);await load(organizationRequest);assert.equal(calls,1);
+  await load({...organizationRequest,refresh:true});assert.equal(calls,2);assert.equal(modes.at(-1),'no-cache');
+  for(const [part,value] of [
+    ['profile',{...organization(),unavailable:'institution_not_found'}],
+    ['network',{...organization('network'),offices:null,missing:['offices']}],
+    ['sec',{...organization('sec'),sec:{status:'stale',candidates:[]}}],
+    ['sec',{...organization('sec'),sec:{status:'unavailable',candidates:[]}}],
+  ]){
+    body=value;const before=calls;
+    await load({...organizationRequest,part,refresh:true});await load({...organizationRequest,part});assert.equal(calls-before,2);
+  }
+  for(const value of [null,{...organization(),rssd:999},{...organization(),version:'old-model'},{...organization(),source:{...organizationSource,sha256:'bad'}}]){
+    body=value;const before=calls;
+    await assert.rejects(load({...organizationRequest,refresh:true}));await assert.rejects(load(organizationRequest));assert.equal(calls-before,2);
+  }
+  body=organization();await load(organizationRequest);await load(organizationRequest);assert.equal(modes.at(-1),'default');
+  const before=calls;
+  await assert.rejects(load({...organizationRequest,part:'unexpected'}));assert.equal(calls,before);
+});

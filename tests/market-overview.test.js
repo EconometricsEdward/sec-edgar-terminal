@@ -104,7 +104,7 @@ test('durable Market fallback preserves one complete shared snapshot and rejects
   let stored = null, writes = 0, releases = 0;
   const dependencies = { mode: 'supabase', begin: async () => ({ generation: '1' }),
     read: async (dataset, key) => { assert.equal(dataset, 'financial'); assert.equal(key, 'research-market-overview-v1:latest'); return stored; },
-    publish: async ({ payload, metadata }) => { writes++; stored = { payload, metadata }; },
+    publish: async ({ payload, metadata, returnEnvelope }) => { assert.equal(returnEnvelope, false); writes++; stored = { payload, metadata }; },
     release: async () => { releases++; return true; } };
   await publishDurableMarketOverview(overview, dependencies);
   const recovered = await readDurableMarketOverview(dependencies);

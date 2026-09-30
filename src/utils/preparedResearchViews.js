@@ -154,7 +154,8 @@ export async function prepareResearchViews(company, sourceEnvelopes, {
         financialInputHash, inputDocuments, basis, view: kind,
         ...(kind === 'compare' ? { financialBaseInputHash, compareMappingVersion: COMPARE_MAPPING_VERSION,
           sourceEnrichmentVersion: COMPARE_SOURCE_VERSION, sourceCoverage: enrichedCompany.sourceCoverage, supplementalDocuments } : {}) };
-      const stored = await publish({ dataset: 'financial', key, claim, payload, metadata,
+      // Broad-cohort publications have no hot mirror or returned-envelope consumer.
+      const stored = await publish({ dataset: 'financial', key, claim, payload, metadata, returnEnvelope: hotEligible,
         identityInputs: { financialInputHash, kind, basis } });
       const hotStored = await mirror(key, claim, payload, stored?.metadata || metadata);
       results.push({ kind, basis, status: 'updated', bytes: Buffer.byteLength(JSON.stringify(payload)), hotStored });
