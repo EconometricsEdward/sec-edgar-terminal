@@ -81,6 +81,13 @@ function narrativeLayout(paragraphs) {
 export function extractTimelineDisclosures(text, form) {
   const extracted = disclosurePassages(text, form);
   let retainedCharacters = 0;
+  const retainedText = new Set();
+  const retain = passage => {
+    if (retainedText.has(passage.text)) return true;
+    if (retainedCharacters + passage.text.length > RISK_TIMELINE_LIMITS.analysisCharactersPerFiling) return false;
+    retainedText.add(passage.text); retainedCharacters += passage.text.length;
+    return true;
+  };
   const topics = {};
   for (const topic of RISK_TIMELINE_TOPICS) {
     const matching = extracted.paragraphs.filter(p => topic.id === 'customer-concentration'
@@ -90,21 +97,85 @@ export function extractTimelineDisclosures(text, form) {
       .sort((a, b) => Number(b.sectionId !== 'other') - Number(a.sectionId !== 'other') || b.relevance - a.relevance || a.index - b.index);
     const retained = [];
     for (const p of ranked) {
-      if (retained.length >= RISK_TIMELINE_LIMITS.passagesPerTopic || retainedCharacters + p.text.length > RISK_TIMELINE_LIMITS.analysisCharactersPerFiling) continue;
-      retained.push(p); retainedCharacters += p.text.length;
+      if (retained.length >= RISK_TIMELINE_LIMITS.passagesPerTopic || !retain(p)) continue;
+      retained.push(p);
     }
     retained.sort((a, b) => a.index - b.index);
     topics[topic.id] = { form, paragraphs: retained, matches: retained, sections: extracted.sections,
       matchingParagraphs: prose.length, rejectedParagraphs: matching.length - prose.length,
       limited: retained.length < prose.length, omittedMatches: prose.length - retained.length };
   }
+  // A new collateral clause can revise an earlier funding paragraph that did
+  // not mention collateral. Keep those identified-section paragraphs only as
+  // comparison candidates; they never count as collateral mentions or events.
+  const collateral = topics.collateral;
+  const indexes = new Set(collateral.paragraphs.map(p => p.index));
+  const covenantQuery = RISK_TIMELINE_TOPICS.find(topic => topic.id === 'covenants').parsed;
+  const funding = /\b(?:credit\s+(?:facilit(?:y|ies)|agreements?)|loans?\s+(?:facilit(?:y|ies)|agreements?)|(?:borrowing|lending|debt|financing)\s+(?:facilit(?:y|ies)|agreements?|arrangements?)|revolving\s+(?:credit|facilit(?:y|ies))|revolver)\b/i;
+  const candidates = extracted.paragraphs.filter(p => p.sectionId !== 'other' && !indexes.has(p.index)
+    && isTimelineNarrative(p.text) && (funding.test(p.text) || matchesQuery(p.text, covenantQuery)));
+  collateral.paragraphs = [...collateral.matches];
+  for (const p of candidates) {
+    if (collateral.paragraphs.length >= RISK_TIMELINE_LIMITS.passagesPerTopic || !retain(p)) continue;
+    collateral.paragraphs.push(p);
+  }
+  collateral.paragraphs.sort((a, b) => a.index - b.index);
   return { topics, sections: extracted.sections.map(section => section.id), extraction: extracted.extraction,
     layout: form === '20-F' ? narrativeLayout(extracted.paragraphs) : null };
 }
 
+const sentencesOf = text => [...sentenceSegmenter.segment(text)].map(part => ({ 0: part.segment, index: part.index }));
+function sentenceTokens(text, reportDate) {
+  const dates = [...text.matchAll(/\b(?:as of(?: both)?|at|for (?:the )?(?:year|quarter|period|three months|six months|nine months) ended)\s+(?:(?:january|february|march|april|may|june|july|august|september|october|november|december)\s+\d{1,2},?\s+20\d{2}|20\d{2}-\d{2}-\d{2})\b/gi)]
+    .filter(match => comparableTimelineText(match[0], reportDate).includes('reportingdate'));
+  const tokens = [];
+  for (const match of text.matchAll(/\S+/g)) {
+    const date = dates.find(span => match.index >= span.index && match.index < span.index + span[0].length);
+    if (date) {
+      if (tokens.at(-1)?.date !== date.index) tokens.push({ key: 'reportingdate', index: date.index, date: date.index });
+    } else {
+      const key = comparableTimelineText(match[0]);
+      if (key) tokens.push({ key, index: match.index });
+    }
+  }
+  return tokens;
+}
+function revisionPreview(full, counterpart, reportDate, counterpartReportDate, cut, topic) {
+  const oldSentences = sentencesOf(counterpart.text);
+  const oldKeys = new Set(oldSentences.map(match => comparableTimelineText(match[0], counterpartReportDate)));
+  const changed = sentencesOf(full).find(match => match.index + match[0].length > cut
+    && (!topic || topicSentences(match[0], topic).length)
+    && !oldKeys.has(comparableTimelineText(match[0], reportDate)));
+  if (!changed) return null;
+  const tokens = sentenceTokens(changed[0], reportDate);
+  // Select the corresponding sentence within the already matched paragraph.
+  // Shared leading and trailing tokens distinguish it from nearby boilerplate.
+  const candidates = oldSentences.map(match => {
+    const other = sentenceTokens(match[0], counterpartReportDate);
+    let lead = 0, tail = 0;
+    while (lead < tokens.length && lead < other.length && tokens[lead].key === other[lead].key) lead++;
+    while (tail < tokens.length - lead && tail < other.length - lead && tokens.at(-tail - 1).key === other.at(-tail - 1).key) tail++;
+    return { lead, score: lead + tail };
+  }).sort((a, b) => b.score - a.score);
+  const focus = changed.index + (tokens[candidates[0]?.lead || 0]?.index ?? 0);
+  if (focus <= cut) return null;
+  const endOfSentence = changed.index + changed[0].length;
+  const ranges = [[0, Math.min(120, full.length)], [changed.index, Math.min(changed.index + 120, endOfSentence)],
+    [Math.max(changed.index, focus - 140), Math.min(endOfSentence, focus + 200)]];
+  const merged = [];
+  for (let [start, end] of ranges.sort((a, b) => a[0] - b[0])) {
+    if (start > 0 && !/\s/.test(full[start - 1])) { const space = full.indexOf(' ', start); if (space >= 0 && space < end) start = space + 1; }
+    if (end < full.length && !/\s/.test(full[end])) { const space = full.lastIndexOf(' ', end); if (space > start) end = space; }
+    if (end <= start) continue;
+    if (merged.length && start <= merged.at(-1)[1]) merged.at(-1)[1] = Math.max(merged.at(-1)[1], end);
+    else merged.push([start, end]);
+  }
+  return merged.map(([start, end]) => full.slice(start, end).trim()).join('… ') + (merged.at(-1)?.[1] < full.length ? '…' : '');
+}
+
 /** Leading excerpts retain the paragraph's opening qualifications and negation.
  * They are explicitly marked when incomplete; source links retain full context. */
-export function timelineExcerpt(passage, url) {
+export function timelineExcerpt(passage, url, counterpart, reportDate, counterpartReportDate, topic) {
   const full = passage.text;
   let text = full;
   if (full.length > RISK_TIMELINE_LIMITS.excerptCharacters) {
@@ -113,12 +184,16 @@ export function timelineExcerpt(passage, url) {
     const last = sentences.at(-1)?.index;
     const cut = last != null && last >= 180 ? last + 1 : Math.max(1, prefix.lastIndexOf(' '));
     text = `${prefix.slice(0, cut).trimEnd()}…`;
+    // If the opening preview hides the revision, keep a short opening for
+    // qualifications and append source text around the changed sentence.
+    // Compare reporting dates semantically so a date roll does not steal focus.
+    if (counterpart) text = revisionPreview(full, counterpart, reportDate, counterpartReportDate, cut, topic) || text;
   }
   return { text, url, section: passage.section, paragraphIndex: passage.index, truncated: full.length > text.length };
 }
 
-const side = (filing, passages) => ({ end: filing.reportDate, filed: filing.filed, form: filing.form,
-  evidence: passages.map(p => timelineExcerpt(p, filing.url)), sourceUrls: [filing.url] });
+const side = (filing, passages, counterparts, counterpartFiling, topic) => ({ end: filing.reportDate, filed: filing.filed, form: filing.form,
+  evidence: passages.map((p, index) => timelineExcerpt(p, filing.url, counterparts?.[index], filing.reportDate, counterpartFiling?.reportDate, topic)), sourceUrls: [filing.url] });
 
 /** Only paired, recognized-section wording revisions become events. Absence,
  * unmatched passages and unreadable sections remain explicit coverage states. */
@@ -140,7 +215,7 @@ export function compareTimelineDisclosures(current, prior, currentFiling, priorF
         comparisonError: 'These 20-F reports use different text layouts: printed-line fragments versus complete paragraphs. Compare the original reports before interpreting wording changes.' };
       continue;
     }
-    if (!allowed || !after.matches.length || !before.matches.length) {
+    if (!allowed || !after.matches.length || !before.paragraphs.length) {
       coverage[topic.id] = { ...base, status: !after.matchingParagraphs ? 'missing' : 'uncompared', unpairedMatches: after.matches.length };
       continue;
     }
@@ -173,7 +248,8 @@ export function compareTimelineDisclosures(current, prior, currentFiling, priorF
       title: `${topic.label} language changed`, direction: 'review',
       scope: `${currentFiling.form} primary reports · ${priorFiling.reportDate} → ${currentFiling.reportDate} · ${gapDays}-day reporting gap`,
       criterion: 'Topic-relevant sentences changed within similar full passages in the same identified section. Wording changes require source review; they do not establish a change in risk.',
-      before: side(priorFiling, retained.map(p => p.before)), after: side(currentFiling, retained.map(p => p.after)) });
+      before: side(priorFiling, retained.map(p => p.before), retained.map(p => p.after), currentFiling, topic),
+      after: side(currentFiling, retained.map(p => p.after), retained.map(p => p.before), priorFiling, topic) });
   }
   return { events, coverage };
 }

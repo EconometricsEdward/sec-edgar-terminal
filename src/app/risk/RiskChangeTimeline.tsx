@@ -68,7 +68,7 @@ function EvidenceSide({ side, event, label }: { side: TimelineSide; event: RiskT
 function PassageEvidence({ passage, before, after, isBefore }: { passage: Passage; before?: string; after?: string; isBefore: boolean }) {
   const parts = useMemo(() => before && after ? disclosureWordDiff(before, after).filter(part => isBefore ? part.kind !== 'added' : part.kind !== 'removed') : null, [before, after, isBefore]);
   const beyondPreview = before === after && passage.truncated;
-  return <div>{passage.section && <span className={s.section}>{passage.section}</span>}<blockquote>{parts ? parts.map((part, index) => part.kind === 'same' ? <span key={index}>{part.text}</span> : <mark key={index}>{part.text}</mark>) : passage.text}{passage.truncated && !/…$|\.{3}$/.test(passage.text) && '…'}</blockquote>{passage.truncated && <span className={s.excerptNote}>{beyondPreview ? 'Change beyond preview · open original' : 'Excerpt · full passage in source'}</span>}</div>;
+  return <div>{passage.section && <span className={s.section}>{passage.section}</span>}<blockquote>{parts ? parts.map((part, index) => part.kind === 'same' ? <span key={index}>{part.text}</span> : <mark key={index}>{part.text}</mark>) : passage.text}{passage.truncated && !/…$|\.{3}$/.test(passage.text) && '…'}</blockquote>{passage.truncated && <span className={s.excerptNote}>{beyondPreview ? 'Change beyond preview · open original' : 'Excerpt · ellipses omit text · full passage in source'}</span>}</div>;
 }
 
 function ComparisonBars({ event }: { event: RiskTimelineEvent }) {

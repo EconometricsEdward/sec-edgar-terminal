@@ -14,7 +14,7 @@ export const RISK_TIMELINE_LIMITATIONS = [
   'Missing mentions, unrecognized sections and failed reads are incomplete evidence. Review the original reports; absence is not zero risk.',
   'Customer groups and anonymous labels do not identify the same counterparty across reports. Concentration benchmarks and reporting durations can differ or overlap.',
   'Covenant or collateral wording does not establish covenant breach, borrowing availability, or an asset encumbrance amount. No metric values are inferred from prose.',
-  'Excerpts preserve paragraph openings and are marked when shortened. Open the source for qualifications beyond the preview.',
+  'Excerpts retain paragraph openings and can append text around a revision beyond the opening preview. Ellipses mark omitted text; highlighted wording is approximate. Open the source for full qualifications.',
 ];
 
 export function parseRiskTimelineRequest(input, now = new Date()) {
