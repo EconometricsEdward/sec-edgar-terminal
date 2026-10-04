@@ -11,7 +11,7 @@ export const X402_DATA_HEADERS = Object.freeze({
   'CDN-Cache-Control': 'no-store',
   'Vercel-CDN-Cache-Control': 'no-store',
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Expose-Headers': 'PAYMENT-REQUIRED, PAYMENT-RESPONSE, X-X402-Price, X-Data-Stale, Link',
+  'Access-Control-Expose-Headers': 'PAYMENT-REQUIRED, PAYMENT-RESPONSE, X-X402-Price, X-Data-Stale, X-Content-SHA256, X-X402-Recovery-Until, X-X402-Recovered, Link',
   'X-Robots-Tag': 'noindex',
   Link: '</data-access>; rel="help"',
 });
@@ -21,7 +21,7 @@ export function x402DataError(code, message, status = 400) {
 export function x402DataOptions() {
   return new Response(null, { status: 204, headers: { ...X402_DATA_HEADERS,
     'Access-Control-Allow-Methods': 'GET, OPTIONS',
-    'Access-Control-Allow-Headers': 'Accept, PAYMENT-SIGNATURE',
+    'Access-Control-Allow-Headers': 'Accept, PAYMENT-SIGNATURE, X-X402-Recovery-Token',
     'Access-Control-Max-Age': '600',
   } });
 }

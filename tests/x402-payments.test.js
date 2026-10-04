@@ -61,8 +61,8 @@ function assertPrivate(response) {
 }
 
 function fixture({ handler = () => Response.json({ cik: '320193', value: 42 }), settlement, ledgerFailure, validate,
-  attemptGate = createX402AttemptGate(), recipientCheck, configuration = config, discovery = {} } = {}) {
-  const state = { reads: 0, verifies: 0, settles: 0, claims: 0, supported: 0, finishes: [], reservations: new Map() };
+  attemptGate = createX402AttemptGate(), recipientCheck, configuration = config, discovery = {}, deliveryStorageFailure = false } = {}) {
+  const state = { reads: 0, verifies: 0, settles: 0, claims: 0, supported: 0, finishes: [], reservations: new Map(), deliveries: [] };
   const svmFacilitator = new ExactSvmFacilitator({
     getAddresses: () => [feePayer.address],
     simulateTransaction: async () => {},
@@ -100,11 +100,17 @@ function fixture({ handler = () => Response.json({ cik: '320193', value: 42 }), 
       if (state.reservations.has(nonceKey)) return { claimed: false, status: 'pending' };
       state.reservations.set(nonceKey, input);
       state.claims++;
-      return { claimed: true, token: { owner: input.requestId } };
+      return { claimed: true, token: { paymentHash: input.paymentHash, owner: input.requestId } };
     },
     async finish(input) {
       if (input.errorCode !== undefined) assert.match(input.errorCode, /^[a-z0-9_]{1,80}$/, 'receipt errors match the durable ledger contract');
       state.finishes.push(input);
+    },
+    async stageDelivery(input) {
+      assert.equal(state.settles, 0, 'exact response storage precedes settlement');
+      if (deliveryStorageFailure) throw new Error('Storage unavailable');
+      state.deliveries.push({ ...input, bytes: Buffer.from(input.bytes) });
+      return { expiresAt: '2026-10-05T23:00:00.000Z' };
     },
   };
   const paid = createPaidHandler(async (...args) => { state.reads++; return handler(...args); }, {
@@ -113,6 +119,56 @@ function fixture({ handler = () => Response.json({ cik: '320193', value: 42 }), 
   });
   return { paid, state };
 }
+
+test('optional exact response storage keeps only a capability hash and precedes one settlement', async () => {
+  const { paid, state } = fixture();
+  const payload = await paymentPayload(paid);
+  const request = signedRequest(payload);
+  const token = 'ab'.repeat(32);
+  request.headers.set('X-X402-Recovery-Token', token);
+  const response = await paid(request);
+  assert.equal(response.status, 200);
+  const bytes = Buffer.from(await response.arrayBuffer());
+  assert.equal(state.deliveries.length, 1);
+  assert.deepEqual(state.deliveries[0].bytes, bytes);
+  assert.equal(state.deliveries[0].recoveryHash, createHash('sha256').update(token).digest('hex'));
+  assert.equal(state.deliveries[0].token.paymentHash, state.finishes.at(-1).paymentHash);
+  assert.equal(response.headers.get('X-X402-Recovery-Until'), '2026-10-05T23:00:00.000Z');
+  assert.equal(state.settles, 1);
+  assert.equal((await paid(request)).status, 409);
+  assert.equal(state.settles, 1);
+});
+
+test('recovery storage failure leaves a failed handler receipt and never settles payment', async () => {
+  const { paid, state } = fixture({ deliveryStorageFailure: true });
+  const request = signedRequest(await paymentPayload(paid));
+  request.headers.set('X-X402-Recovery-Token', 'cd'.repeat(32));
+  const response = await paid(request);
+  assert.equal(response.status, 503);
+  assert.deepEqual(await response.json(), { error: 'delivery_storage_unavailable', charged: false });
+  assert.equal(state.settles, 0);
+  assert.equal(state.finishes.at(-1).status, 'handler_failed');
+});
+
+test('unsafe and duplicate recovery capabilities are rejected before verification or database work', async () => {
+  const { paid, state } = fixture();
+  for (const token of ['', 'ef'.repeat(31), 'EF'.repeat(32), `${'ef'.repeat(32)}, ${'ab'.repeat(32)}`, '../secret']) {
+    const response = await paid(new Request(resourceUrl, { headers: { 'PAYMENT-SIGNATURE': 'bad', 'X-X402-Recovery-Token': token } }));
+    assert.equal(response.status, 400);
+  }
+  assert.equal(state.verifies + state.claims + state.settles + state.reads, 0);
+});
+
+test('CSV is billable only when the route explicitly permits and declares CSV', async () => {
+  for (const allowCsv of [false, true]) {
+    const { paid, state } = fixture({ handler: () => new Response('ticker,value\r\nAAPL,42\r\n', { headers: { 'Content-Type': 'text/csv; charset=utf-8' } }),
+      discovery: allowCsv ? { allowCsv: true, mimeType: () => 'text/csv' } : {} });
+    const response = await paid(signedRequest(await paymentPayload(paid)));
+    assert.equal(response.status, allowCsv ? 200 : 502);
+    assert.equal(state.settles, allowCsv ? 1 : 0);
+    if (allowCsv) assert.equal(await response.text(), 'ticker,value\r\nAAPL,42\r\n');
+  }
+});
 
 async function paymentPayload(paid, url = resourceUrl) {
   const offer = await paid(new Request(url));

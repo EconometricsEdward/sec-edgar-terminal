@@ -36,12 +36,31 @@ client.onBeforePaymentCreation(async ({ paymentRequired, selectedRequirements: o
 });
 const paidFetch = wrapFetchWithPayment(fetch, client);
 
-const response = await paidFetch(url);
+// Generate a new private capability for each purchase. Persist it privately
+// before sending the request; never put it in a URL or a public issue.
+const recoveryToken = Array.from(crypto.getRandomValues(new Uint8Array(32)),
+  byte => byte.toString(16).padStart(2, '0')).join('');
+const recovery = { url: 'https://secedgarterminal.com/api/x402/v1/delivery', token: recoveryToken };
+let response;
+try {
+  response = await paidFetch(url, { headers: { 'X-X402-Recovery-Token': recoveryToken } });
+} catch (error) {
+  throw new Error(JSON.stringify({ error: error.message, recovery,
+    nextStep: 'Use ordinary fetch to the recovery URL with the token header. Do not authorize a replacement payment.' }));
+}
 const receipt = response.headers.get('PAYMENT-RESPONSE');
 const data = await response.json();
 if (!response.ok) {
   // Preserve these details and reconcile before authorizing another payment.
-  throw new Error(JSON.stringify({ status: response.status, receipt, error: data }));
+  throw new Error(JSON.stringify({ status: response.status, receipt, error: data, recovery }));
 }
-console.log(JSON.stringify({ receipt, data }));`;
+console.log(JSON.stringify({ receipt, data, recovery,
+  recoveryUntil: response.headers.get('X-X402-Recovery-Until') }));
+
+// Recover without another payment if delivery was interrupted:
+// const recovered = await fetch(recovery.url, {
+//   headers: { 'X-X402-Recovery-Token': recovery.token }
+// });
+// 200: exact paid response; 202: pending settlement; 404: missing/expired.
+// Keep the recovery details private. Recovery access lasts 24 hours.`;
 }

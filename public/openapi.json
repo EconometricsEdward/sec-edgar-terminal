@@ -2,10 +2,14 @@
   "openapi": "3.1.0",
   "info": {
     "title": "EDGAR Terminal Research and x402 Data APIs",
-    "version": "2.2.0",
-    "description": "Read-only company financial highlights, SEC fundamental universe, prepared N-PORT and Form 13F summaries, and official CFTC Commitments of Traders data. CFTC positioning is separate market context and is not an equity-price feed or trade signal. Dedicated x402 v2 endpoints deliver prepared machine-readable research for 0.01 USDC on Solana per successfully settled GET. Public pages, public API previews and discovery documents remain free. Payments may require activation; consult /api/x402."
+    "version": "2.3.0",
+    "description": "Free public research APIs and six paid machine products: prepared company financials, snapshot pages, multi-company financial bundles, fundamental screens with peer percentiles, and debt/liquidity screens. Paid GETs cost 0.01 USDC on Solana. New batch and screen products support JSON/CSV. Public research remains free; paid products provide selected, normalized delivery rather than exclusive ownership of SEC records. Optional exact-response recovery is available for 24 hours after staging. Consult /api/x402 for availability."
   },
-  "servers": [{ "url": "https://secedgarterminal.com" }],
+  "servers": [
+    {
+      "url": "https://secedgarterminal.com"
+    }
+  ],
   "tags": [
     {
       "name": "SEC fundamentals",
@@ -98,55 +102,168 @@
     },
     "/api/v1/funds/{ticker}": {
       "get": {
-        "tags": ["Fund research"],
+        "tags": [
+          "Fund research"
+        ],
         "operationId": "readPublicFundSummary",
         "summary": "Read a prepared N-PORT fund summary",
         "description": "Cache-only read with up to ten positions, source dates, coverage and SEC links. Never fetches SEC documents or starts a refresh. Omit accession for the prepared latest report; an explicit accession pins one filing and excludes later amendments. Missing prepared data does not establish that no filing exists. Unknown, duplicate or empty query parameters are rejected.",
         "parameters": [
-          { "name": "ticker", "in": "path", "required": true, "description": "Fund ticker, normalized to uppercase.", "schema": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9.-]{0,14}$" } },
-          { "name": "accession", "in": "query", "required": false, "description": "Exact SEC filing accession.", "schema": { "type": "string", "pattern": "^[0-9]{10}-[0-9]{2}-[0-9]{6}$" } }
+          {
+            "name": "ticker",
+            "in": "path",
+            "required": true,
+            "description": "Fund ticker, normalized to uppercase.",
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9.-]{0,14}$"
+            }
+          },
+          {
+            "name": "accession",
+            "in": "query",
+            "required": false,
+            "description": "Exact SEC filing accession.",
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9]{10}-[0-9]{2}-[0-9]{6}$"
+            }
+          }
         ],
         "responses": {
           "200": {
             "description": "Prepared summary; stale may be true. N-PORT weights retain the full net-assets denominator and may be negative or unavailable.",
-            "headers": { "Cache-Control": { "schema": { "type": "string", "const": "public, max-age=0, s-maxage=60, stale-while-revalidate=60" } } },
-            "content": { "application/json": { "schema": { "allOf": [{ "$ref": "#/components/schemas/PublicFundSummary" }, { "properties": { "status": { "const": "ready" }, "kind": { "const": "nport" } } }] } } }
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "public, max-age=0, s-maxage=60, stale-while-revalidate=60"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/PublicFundSummary"
+                    },
+                    {
+                      "properties": {
+                        "status": {
+                          "const": "ready"
+                        },
+                        "kind": {
+                          "const": "nport"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
           },
           "400": {
             "description": "Invalid fund ticker, accession or query parameters; private, no-store.",
-            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" } } }
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
           },
-          "503": { "$ref": "#/components/responses/PublicFundUnavailable" }
+          "503": {
+            "$ref": "#/components/responses/PublicFundUnavailable"
+          }
         }
       }
     },
     "/api/v1/managers/{cik}": {
       "get": {
-        "tags": ["Fund research"],
+        "tags": [
+          "Fund research"
+        ],
         "operationId": "readPublicManagerSummary",
         "summary": "Read a prepared Form 13F manager summary",
         "description": "Cache-only read of a complete prepared quarter with up to ten positions, coverage, dates and SEC filing sources. Never fetches SEC documents or starts a refresh. Omit period for the prepared latest quarter. Weights use all reported 13F holdings value, not assets under management or net assets. Unknown, duplicate or empty query parameters are rejected.",
         "parameters": [
-          { "name": "cik", "in": "path", "required": true, "description": "Nonzero manager CIK, normalized to ten digits.", "schema": { "type": "string", "pattern": "^(?!0+$)[0-9]{1,10}$" } },
-          { "name": "period", "in": "query", "required": false, "description": "A non-future calendar quarter end with year greater than zero.", "schema": { "type": "string", "format": "date", "pattern": "^[0-9]{4}-(03-31|06-30|09-30|12-31)$" } }
+          {
+            "name": "cik",
+            "in": "path",
+            "required": true,
+            "description": "Nonzero manager CIK, normalized to ten digits.",
+            "schema": {
+              "type": "string",
+              "pattern": "^(?!0+$)[0-9]{1,10}$"
+            }
+          },
+          {
+            "name": "period",
+            "in": "query",
+            "required": false,
+            "description": "A non-future calendar quarter end with year greater than zero.",
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "pattern": "^[0-9]{4}-(03-31|06-30|09-30|12-31)$"
+            }
+          }
         ],
         "responses": {
           "200": {
             "description": "Complete prepared quarter; stale may be true, including when newer evidence is incomplete. Options and confidential omissions remain explicit.",
-            "headers": { "Cache-Control": { "schema": { "type": "string", "const": "public, max-age=0, s-maxage=60, stale-while-revalidate=60" } } },
-            "content": { "application/json": { "schema": { "allOf": [{ "$ref": "#/components/schemas/PublicFundSummary" }, { "properties": { "status": { "const": "ready" }, "kind": { "const": "13f" } } }] } } }
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "public, max-age=0, s-maxage=60, stale-while-revalidate=60"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/PublicFundSummary"
+                    },
+                    {
+                      "properties": {
+                        "status": {
+                          "const": "ready"
+                        },
+                        "kind": {
+                          "const": "13f"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
           },
           "400": {
             "description": "Invalid manager CIK, reporting quarter or query parameters; private, no-store.",
-            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" } } }
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
           },
-          "503": { "$ref": "#/components/responses/PublicFundUnavailable" }
+          "503": {
+            "$ref": "#/components/responses/PublicFundUnavailable"
+          }
         }
       }
     },
     "/api/v2/factor-universe": {
       "get": {
-        "tags": ["SEC fundamentals"],
+        "tags": [
+          "SEC fundamentals"
+        ],
         "summary": "Read the prepared SEC fundamental universe universe",
         "description": "Returns equal-issuer-weight filing breadth, magnitude, paired dispersion, cash confirmation and sector variance. Public reads never initiate a bulk SEC refresh.",
         "parameters": [
@@ -156,7 +273,10 @@
             "required": false,
             "schema": {
               "type": "string",
-              "enum": ["ttm", "annual"],
+              "enum": [
+                "ttm",
+                "annual"
+              ],
               "default": "ttm"
             }
           }
@@ -165,15 +285,33 @@
           "200": {
             "description": "Prepared SEC fundamental snapshot",
             "headers": {
-              "X-Schema-Version": { "$ref": "#/components/headers/SchemaVersion" },
-              "X-Methodology-Version": { "$ref": "#/components/headers/MethodologyVersion" },
-              "X-SEC-Snapshot-At": { "$ref": "#/components/headers/SecSnapshotAt" },
-              "X-Cache-Source": { "$ref": "#/components/headers/CacheSource" },
-              "X-Data-Stale": { "$ref": "#/components/headers/DataStale" },
-              "RateLimit-Limit": { "$ref": "#/components/headers/RateLimit" },
-              "RateLimit-Remaining": { "$ref": "#/components/headers/RateRemaining" },
-              "RateLimit-Reset": { "$ref": "#/components/headers/RateReset" },
-              "Link": { "$ref": "#/components/headers/SchemaLink" }
+              "X-Schema-Version": {
+                "$ref": "#/components/headers/SchemaVersion"
+              },
+              "X-Methodology-Version": {
+                "$ref": "#/components/headers/MethodologyVersion"
+              },
+              "X-SEC-Snapshot-At": {
+                "$ref": "#/components/headers/SecSnapshotAt"
+              },
+              "X-Cache-Source": {
+                "$ref": "#/components/headers/CacheSource"
+              },
+              "X-Data-Stale": {
+                "$ref": "#/components/headers/DataStale"
+              },
+              "RateLimit-Limit": {
+                "$ref": "#/components/headers/RateLimit"
+              },
+              "RateLimit-Remaining": {
+                "$ref": "#/components/headers/RateRemaining"
+              },
+              "RateLimit-Reset": {
+                "$ref": "#/components/headers/RateReset"
+              },
+              "Link": {
+                "$ref": "#/components/headers/SchemaLink"
+              }
             },
             "content": {
               "application/json": {
@@ -183,15 +321,23 @@
               }
             }
           },
-          "400": { "$ref": "#/components/responses/BadRequest" },
-          "429": { "$ref": "#/components/responses/RateLimited" },
-          "503": { "$ref": "#/components/responses/Unavailable" }
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
         }
       }
     },
     "/api/v1/cftc/markets": {
       "get": {
-        "tags": ["CFTC positioning"],
+        "tags": [
+          "CFTC positioning"
+        ],
         "summary": "Read a CFTC report-family catalog and launch-market snapshot",
         "description": "Returns one futures-only report family and report date. TFF and Disaggregated participant categories are not blended.",
         "parameters": [
@@ -201,7 +347,10 @@
             "required": false,
             "schema": {
               "type": "string",
-              "enum": ["tff", "disaggregated"],
+              "enum": [
+                "tff",
+                "disaggregated"
+              ],
               "default": "tff"
             }
           },
@@ -221,14 +370,30 @@
           "200": {
             "description": "CFTC catalog and current positioning",
             "headers": {
-              "X-Schema-Version": { "$ref": "#/components/headers/SchemaVersion" },
-              "X-Report-Date": { "$ref": "#/components/headers/ReportDate" },
-              "X-Cache-Source": { "$ref": "#/components/headers/CacheSource" },
-              "X-Data-Stale": { "$ref": "#/components/headers/DataStale" },
-              "RateLimit-Limit": { "$ref": "#/components/headers/RateLimit" },
-              "RateLimit-Remaining": { "$ref": "#/components/headers/RateRemaining" },
-              "RateLimit-Reset": { "$ref": "#/components/headers/RateReset" },
-              "Link": { "$ref": "#/components/headers/SchemaLink" }
+              "X-Schema-Version": {
+                "$ref": "#/components/headers/SchemaVersion"
+              },
+              "X-Report-Date": {
+                "$ref": "#/components/headers/ReportDate"
+              },
+              "X-Cache-Source": {
+                "$ref": "#/components/headers/CacheSource"
+              },
+              "X-Data-Stale": {
+                "$ref": "#/components/headers/DataStale"
+              },
+              "RateLimit-Limit": {
+                "$ref": "#/components/headers/RateLimit"
+              },
+              "RateLimit-Remaining": {
+                "$ref": "#/components/headers/RateRemaining"
+              },
+              "RateLimit-Reset": {
+                "$ref": "#/components/headers/RateReset"
+              },
+              "Link": {
+                "$ref": "#/components/headers/SchemaLink"
+              }
             },
             "content": {
               "application/json": {
@@ -238,18 +403,32 @@
               }
             }
           },
-          "400": { "$ref": "#/components/responses/BadRequest" },
-          "404": { "$ref": "#/components/responses/NotFound" },
-          "429": { "$ref": "#/components/responses/RateLimited" },
-          "502": { "$ref": "#/components/responses/Unavailable" },
-          "503": { "$ref": "#/components/responses/Unavailable" },
-          "504": { "$ref": "#/components/responses/Unavailable" }
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "502": {
+            "$ref": "#/components/responses/Unavailable"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          },
+          "504": {
+            "$ref": "#/components/responses/Unavailable"
+          }
         }
       }
     },
     "/api/v1/cftc/history": {
       "get": {
-        "tags": ["CFTC positioning"],
+        "tags": [
+          "CFTC positioning"
+        ],
         "summary": "Read bounded CFTC history for one contract and participant group",
         "description": "Calculates net contracts, net as a percentage of open interest, exact 7/28-day changes and no-look-ahead within-contract percentiles.",
         "parameters": [
@@ -259,7 +438,10 @@
             "required": false,
             "schema": {
               "type": "string",
-              "enum": ["tff", "disaggregated"],
+              "enum": [
+                "tff",
+                "disaggregated"
+              ],
               "default": "tff"
             }
           },
@@ -267,14 +449,19 @@
             "name": "contract",
             "in": "query",
             "required": true,
-            "schema": { "type": "string", "pattern": "^[A-Z0-9+]{3,12}$" }
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Z0-9+]{3,12}$"
+            }
           },
           {
             "name": "group",
             "in": "query",
             "required": false,
             "description": "Must belong to the selected family.",
-            "schema": { "type": "string" }
+            "schema": {
+              "type": "string"
+            }
           },
           {
             "name": "date",
@@ -292,7 +479,11 @@
             "required": false,
             "schema": {
               "type": "string",
-              "enum": ["1y", "3y", "5y"],
+              "enum": [
+                "1y",
+                "3y",
+                "5y"
+              ],
               "default": "5y"
             }
           }
@@ -301,14 +492,30 @@
           "200": {
             "description": "Selected observation and bounded history",
             "headers": {
-              "X-Schema-Version": { "$ref": "#/components/headers/SchemaVersion" },
-              "X-Report-Date": { "$ref": "#/components/headers/ReportDate" },
-              "X-Cache-Source": { "$ref": "#/components/headers/CacheSource" },
-              "X-Data-Stale": { "$ref": "#/components/headers/DataStale" },
-              "RateLimit-Limit": { "$ref": "#/components/headers/RateLimit" },
-              "RateLimit-Remaining": { "$ref": "#/components/headers/RateRemaining" },
-              "RateLimit-Reset": { "$ref": "#/components/headers/RateReset" },
-              "Link": { "$ref": "#/components/headers/SchemaLink" }
+              "X-Schema-Version": {
+                "$ref": "#/components/headers/SchemaVersion"
+              },
+              "X-Report-Date": {
+                "$ref": "#/components/headers/ReportDate"
+              },
+              "X-Cache-Source": {
+                "$ref": "#/components/headers/CacheSource"
+              },
+              "X-Data-Stale": {
+                "$ref": "#/components/headers/DataStale"
+              },
+              "RateLimit-Limit": {
+                "$ref": "#/components/headers/RateLimit"
+              },
+              "RateLimit-Remaining": {
+                "$ref": "#/components/headers/RateRemaining"
+              },
+              "RateLimit-Reset": {
+                "$ref": "#/components/headers/RateReset"
+              },
+              "Link": {
+                "$ref": "#/components/headers/SchemaLink"
+              }
             },
             "content": {
               "application/json": {
@@ -318,18 +525,32 @@
               }
             }
           },
-          "400": { "$ref": "#/components/responses/BadRequest" },
-          "404": { "$ref": "#/components/responses/NotFound" },
-          "429": { "$ref": "#/components/responses/RateLimited" },
-          "502": { "$ref": "#/components/responses/Unavailable" },
-          "503": { "$ref": "#/components/responses/Unavailable" },
-          "504": { "$ref": "#/components/responses/Unavailable" }
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "502": {
+            "$ref": "#/components/responses/Unavailable"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          },
+          "504": {
+            "$ref": "#/components/responses/Unavailable"
+          }
         }
       }
     },
     "/api/v1/cftc/market-comparison": {
       "get": {
-        "tags": ["CFTC positioning"],
+        "tags": [
+          "CFTC positioning"
+        ],
         "summary": "Compare prepared CFTC positioning across 25 public futures markets",
         "description": "Parameter-free, shared public comparison built only from existing prepared histories. Never starts SEC or CFTC acquisition and contains no portfolio holdings or allocations. TFF markets use Leveraged Funds; Disaggregated markets use Managed Money. Net/OI changes require exact seven-day observations and are percentage-point differences. Historical ranges use available observations within the trailing 52-week window, including current; range.position is linear min/max placement, NOT a percentile. Preserve per-market report dates, actual observation counts and date spans, nulls, stale and incomplete flags. A ready row can contain stale, incomplete or unavailable individual values; inspect its summary. HTTP 200 may contain partial or entirely unavailable prepared coverage. All query parameters are rejected.",
         "parameters": [],
@@ -337,52 +558,92 @@
           "200": {
             "description": "Fixed public catalog with validated summaries or explicit unavailable rows; preparation of all markets is not guaranteed",
             "headers": {
-              "X-Schema-Version": { "$ref": "#/components/headers/SchemaVersion" },
-              "RateLimit-Limit": { "$ref": "#/components/headers/RateLimit" },
-              "RateLimit-Remaining": { "$ref": "#/components/headers/RateRemaining" },
-              "RateLimit-Reset": { "$ref": "#/components/headers/RateReset" },
-              "Link": { "$ref": "#/components/headers/SchemaLink" }
+              "X-Schema-Version": {
+                "$ref": "#/components/headers/SchemaVersion"
+              },
+              "RateLimit-Limit": {
+                "$ref": "#/components/headers/RateLimit"
+              },
+              "RateLimit-Remaining": {
+                "$ref": "#/components/headers/RateRemaining"
+              },
+              "RateLimit-Reset": {
+                "$ref": "#/components/headers/RateReset"
+              },
+              "Link": {
+                "$ref": "#/components/headers/SchemaLink"
+              }
             },
             "content": {
               "application/json": {
-                "schema": { "$ref": "https://secedgarterminal.com/schemas/portfolio-market-comparison-v1.schema.json" }
+                "schema": {
+                  "$ref": "https://secedgarterminal.com/schemas/portfolio-market-comparison-v1.schema.json"
+                }
               }
             }
           },
-          "400": { "$ref": "#/components/responses/BadRequest" },
-          "429": { "$ref": "#/components/responses/RateLimited" },
-          "503": { "$ref": "#/components/responses/Unavailable" }
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
         }
       }
     },
     "/api/v1/cftc/status": {
       "get": {
-        "tags": ["CFTC positioning"],
+        "tags": [
+          "CFTC positioning"
+        ],
         "summary": "Read prepared CFTC cache status without contacting the upstream source",
         "description": "Reports TFF and Disaggregated prepared-cache readiness independently and recomputes cache age and source-report currency without contacting CFTC upstream.",
         "responses": {
           "200": {
             "description": "At least one prepared family snapshot is usable",
             "headers": {
-              "X-Schema-Version": { "$ref": "#/components/headers/SchemaVersion" },
-              "RateLimit-Limit": { "$ref": "#/components/headers/RateLimit" },
-              "RateLimit-Remaining": { "$ref": "#/components/headers/RateRemaining" },
-              "RateLimit-Reset": { "$ref": "#/components/headers/RateReset" }
+              "X-Schema-Version": {
+                "$ref": "#/components/headers/SchemaVersion"
+              },
+              "RateLimit-Limit": {
+                "$ref": "#/components/headers/RateLimit"
+              },
+              "RateLimit-Remaining": {
+                "$ref": "#/components/headers/RateRemaining"
+              },
+              "RateLimit-Reset": {
+                "$ref": "#/components/headers/RateReset"
+              }
             },
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/CftcStatus" }
+                "schema": {
+                  "$ref": "#/components/schemas/CftcStatus"
+                }
               }
             }
           },
-          "400": { "$ref": "#/components/responses/BadRequest" },
-          "429": { "$ref": "#/components/responses/RateLimited" },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
           "503": {
             "description": "Shared cache is disabled or no prepared family snapshot is usable",
-            "headers": { "X-Schema-Version": { "$ref": "#/components/headers/SchemaVersion" } },
+            "headers": {
+              "X-Schema-Version": {
+                "$ref": "#/components/headers/SchemaVersion"
+              }
+            },
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/CftcStatus" }
+                "schema": {
+                  "$ref": "#/components/schemas/CftcStatus"
+                }
               }
             }
           }
@@ -392,25 +653,43 @@
     "/api/prices": {
       "get": {
         "deprecated": true,
-        "tags": ["Retired"],
+        "tags": [
+          "Retired"
+        ],
         "summary": "Retired security-price endpoint",
-        "responses": { "410": { "$ref": "#/components/responses/Retired" } }
+        "responses": {
+          "410": {
+            "$ref": "#/components/responses/Retired"
+          }
+        }
       }
     },
     "/api/v1/market-signals": {
       "get": {
         "deprecated": true,
-        "tags": ["Retired"],
+        "tags": [
+          "Retired"
+        ],
         "summary": "Retired price-derived market-signals endpoint",
-        "responses": { "410": { "$ref": "#/components/responses/Retired" } }
+        "responses": {
+          "410": {
+            "$ref": "#/components/responses/Retired"
+          }
+        }
       }
     },
     "/api/v1/factor-universe": {
       "get": {
         "deprecated": true,
-        "tags": ["Retired"],
+        "tags": [
+          "Retired"
+        ],
         "summary": "Retired mixed-data factor-universe v1 endpoint",
-        "responses": { "410": { "$ref": "#/components/responses/Retired" } }
+        "responses": {
+          "410": {
+            "$ref": "#/components/responses/Retired"
+          }
+        }
       }
     },
     "/api/x402": {
@@ -463,7 +742,12 @@
           "iconUrl": "https://secedgarterminal.com/favicon.svg",
           "indexing": "concrete-path",
           "resourceExample": "https://secedgarterminal.com/api/x402/v1/financials/AAPL",
-          "tags": ["finance", "SEC", "financial-statements", "filing-evidence"],
+          "tags": [
+            "finance",
+            "SEC",
+            "financial-statements",
+            "filing-evidence"
+          ],
           "catalog": "https://secedgarterminal.com/api/x402",
           "description": "Offers include input/path and schema-only output metadata. Discovery indexes concrete paths; financials entries can represent specific supported tickers. The payment resource stays the exact concrete request URL. External listing is facilitator-dependent and is not asserted by this document."
         },
@@ -489,6 +773,16 @@
                 "ttm"
               ],
               "default": "annual"
+            }
+          },
+          {
+            "name": "X-X402-Recovery-Token",
+            "in": "header",
+            "required": false,
+            "description": "Optional unique random 32-byte capability encoded as 64 lowercase hexadecimal characters. Generate before the signed purchase and retain privately. Stages exact response before settlement for no-charge retrieval for 24 hours. Never put it in the URL.",
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
             }
           }
         ],
@@ -532,12 +826,25 @@
         }
       },
       "head": {
-        "tags": ["Paid x402 data"],
+        "tags": [
+          "Paid x402 data"
+        ],
         "summary": "HEAD is not supported and never settles payment",
         "security": [],
-        "parameters": [{ "name": "ticker", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "parameters": [
+          {
+            "name": "ticker",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
-          "405": { "$ref": "#/components/responses/X402MethodNotAllowed" }
+          "405": {
+            "$ref": "#/components/responses/X402MethodNotAllowed"
+          }
         }
       }
     },
@@ -569,7 +876,12 @@
           "iconUrl": "https://secedgarterminal.com/favicon.svg",
           "indexing": "concrete-path",
           "resourceExample": "https://secedgarterminal.com/api/x402/v1/refinancing",
-          "tags": ["finance", "SEC", "refinancing", "debt-maturities"],
+          "tags": [
+            "finance",
+            "SEC",
+            "refinancing",
+            "debt-maturities"
+          ],
           "catalog": "https://secedgarterminal.com/api/x402",
           "description": "Offers include input/path and schema-only output metadata. Discovery indexes concrete paths; financials entries can represent specific supported tickers. The payment resource stays the exact concrete request URL. External listing is facilitator-dependent and is not asserted by this document."
         },
@@ -603,6 +915,16 @@
               "pattern": "^[a-f0-9]{64}$"
             },
             "description": "Pass the exact token returned in pagination.snapshot on every page after the first. A changed snapshot returns 409 without settlement."
+          },
+          {
+            "name": "X-X402-Recovery-Token",
+            "in": "header",
+            "required": false,
+            "description": "Optional unique random 32-byte capability encoded as 64 lowercase hexadecimal characters. Generate before the signed purchase and retain privately. Stages exact response before settlement for no-charge retrieval for 24 hours. Never put it in the URL.",
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            }
           }
         ],
         "responses": {
@@ -648,11 +970,15 @@
         }
       },
       "head": {
-        "tags": ["Paid x402 data"],
+        "tags": [
+          "Paid x402 data"
+        ],
         "summary": "HEAD is not supported and never settles payment",
         "security": [],
         "responses": {
-          "405": { "$ref": "#/components/responses/X402MethodNotAllowed" }
+          "405": {
+            "$ref": "#/components/responses/X402MethodNotAllowed"
+          }
         }
       }
     },
@@ -684,7 +1010,12 @@
           "iconUrl": "https://secedgarterminal.com/favicon.svg",
           "indexing": "concrete-path",
           "resourceExample": "https://secedgarterminal.com/api/x402/v1/factor-universe",
-          "tags": ["finance", "SEC", "fundamentals", "sector-analysis"],
+          "tags": [
+            "finance",
+            "SEC",
+            "fundamentals",
+            "sector-analysis"
+          ],
           "catalog": "https://secedgarterminal.com/api/x402",
           "description": "Offers include input/path and schema-only output metadata. Discovery indexes concrete paths; financials entries can represent specific supported tickers. The payment resource stays the exact concrete request URL. External listing is facilitator-dependent and is not asserted by this document."
         },
@@ -730,6 +1061,16 @@
               "pattern": "^[a-f0-9]{64}$"
             },
             "description": "Pass the exact token returned in pagination.snapshot on every page after the first. A changed snapshot returns 409 without settlement."
+          },
+          {
+            "name": "X-X402-Recovery-Token",
+            "in": "header",
+            "required": false,
+            "description": "Optional unique random 32-byte capability encoded as 64 lowercase hexadecimal characters. Generate before the signed purchase and retain privately. Stages exact response before settlement for no-charge retrieval for 24 hours. Never put it in the URL.",
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            }
           }
         ],
         "responses": {
@@ -775,27 +1116,838 @@
         }
       },
       "head": {
-        "tags": ["Paid x402 data"],
+        "tags": [
+          "Paid x402 data"
+        ],
         "summary": "HEAD is not supported and never settles payment",
         "security": [],
         "responses": {
-          "405": { "$ref": "#/components/responses/X402MethodNotAllowed" }
+          "405": {
+            "$ref": "#/components/responses/X402MethodNotAllowed"
+          }
+        }
+      }
+    },
+    "/api/x402/v1/financial-batch": {
+      "get": {
+        "tags": [
+          "Paid x402 data"
+        ],
+        "summary": "Batch normalized financial histories for one to ten companies",
+        "description": "Cache-only prepared data. One bounded successful response costs 0.01 USDC. Invalid selectors, absent data, no matches, conflicts and oversized responses are not settled. Unknown, duplicate and empty query fields are rejected. format=csv returns RFC 4180 CSV with source, selection and pagination context in columns. Screen snapshot tokens bind both source data and criteria; keep criteria identical on subsequent pages. Financial batches require every selected company to be available and are not historical as-filed archives. Responses are bounded to 4 MiB.",
+        "security": [
+          {
+            "X402Payment": []
+          }
+        ],
+        "x-x402": {
+          "version": 2,
+          "scheme": "exact",
+          "price": "0.01",
+          "currency": "USDC",
+          "network": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+          "asset": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+          "amount": "10000",
+          "decimals": 6,
+          "resourceExample": "https://secedgarterminal.com/api/x402/v1/financial-batch?tickers=AAPL%2CMSFT&basis=annual",
+          "formats": [
+            "json",
+            "csv"
+          ]
+        },
+        "x-bazaar": {
+          "extension": "bazaar",
+          "serviceName": "SEC EDGAR Terminal",
+          "iconUrl": "https://secedgarterminal.com/favicon.svg",
+          "indexing": "concrete-path",
+          "resourceExample": "https://secedgarterminal.com/api/x402/v1/factor-universe",
+          "tags": [
+            "finance",
+            "SEC",
+            "fundamentals",
+            "sector-analysis"
+          ],
+          "catalog": "https://secedgarterminal.com/api/x402",
+          "description": "Offers include input/path and schema-only output metadata. Discovery indexes concrete paths; financials entries can represent specific supported tickers. The payment resource stays the exact concrete request URL. External listing is facilitator-dependent and is not asserted by this document."
+        },
+        "parameters": [
+          {
+            "name": "tickers",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z][A-Za-z0-9.-]{0,14}(,[A-Za-z][A-Za-z0-9.-]{0,14}){0,9}$",
+              "description": "One to ten unique company tickers, comma separated."
+            }
+          },
+          {
+            "name": "basis",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "annual",
+                "quarter",
+                "ytd",
+                "ttm"
+              ],
+              "default": "annual",
+              "description": "Financial reporting basis; availability varies by company."
+            }
+          },
+          {
+            "name": "format",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "json",
+                "csv"
+              ],
+              "default": "json",
+              "description": "JSON result or flat CSV with source and pagination context."
+            }
+          },
+          {
+            "name": "X-X402-Recovery-Token",
+            "in": "header",
+            "required": false,
+            "description": "Optional unique random 32-byte capability encoded as 64 lowercase hexadecimal characters. Generate before the signed purchase and retain privately. Stages exact response before settlement for no-charge retrieval for 24 hours. Never put it in the URL.",
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Selected prepared product. Preserve source context, coverage, missing values and snapshot token.",
+            "headers": {
+              "PAYMENT-RESPONSE": {
+                "$ref": "#/components/headers/PaymentResponse"
+              },
+              "EXTENSION-RESPONSES": {
+                "$ref": "#/components/headers/ExtensionResponses"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaidFinancialBatch"
+                }
+              },
+              "text/csv": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "CSV header and data rows; source and pagination metadata are included in columns."
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/X402BadRequest"
+          },
+          "402": {
+            "$ref": "#/components/responses/X402PaymentRequired"
+          },
+          "404": {
+            "description": "No companies match the selected screen; no settlement."
+          },
+          "409": {
+            "$ref": "#/components/responses/X402Conflict"
+          },
+          "413": {
+            "description": "Prepared product exceeds 4 MiB; choose fewer companies or a smaller page. No settlement."
+          },
+          "416": {
+            "$ref": "#/components/responses/X402PageOutOfRange"
+          },
+          "429": {
+            "$ref": "#/components/responses/X402RateLimited"
+          },
+          "502": {
+            "$ref": "#/components/responses/X402ResourceFailure"
+          },
+          "503": {
+            "$ref": "#/components/responses/X402Unavailable"
+          }
+        },
+        "operationId": "readPaidFinancialBatch"
+      },
+      "head": {
+        "tags": [
+          "Paid x402 data"
+        ],
+        "summary": "HEAD is not supported and never settles payment",
+        "security": [],
+        "responses": {
+          "405": {
+            "$ref": "#/components/responses/X402MethodNotAllowed"
+          }
+        }
+      }
+    },
+    "/api/x402/v1/fundamental-screen": {
+      "get": {
+        "tags": [
+          "Paid x402 data"
+        ],
+        "summary": "Screen and rank SEC fundamentals with sector peer percentiles",
+        "description": "Cache-only prepared data. One bounded successful response costs 0.01 USDC. Invalid selectors, absent data, no matches, conflicts and oversized responses are not settled. Unknown, duplicate and empty query fields are rejected. format=csv returns RFC 4180 CSV with source, selection and pagination context in columns. Screen snapshot tokens bind both source data and criteria; keep criteria identical on subsequent pages. Financial batches require every selected company to be available and are not historical as-filed archives. Responses are bounded to 4 MiB.",
+        "security": [
+          {
+            "X402Payment": []
+          }
+        ],
+        "x-x402": {
+          "version": 2,
+          "scheme": "exact",
+          "price": "0.01",
+          "currency": "USDC",
+          "network": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+          "asset": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+          "amount": "10000",
+          "decimals": 6,
+          "resourceExample": "https://secedgarterminal.com/api/x402/v1/fundamental-screen?basis=ttm&limit=100&offset=0",
+          "formats": [
+            "json",
+            "csv"
+          ]
+        },
+        "x-bazaar": {
+          "extension": "bazaar",
+          "serviceName": "SEC EDGAR Terminal",
+          "iconUrl": "https://secedgarterminal.com/favicon.svg",
+          "indexing": "concrete-path",
+          "resourceExample": "https://secedgarterminal.com/api/x402/v1/factor-universe",
+          "tags": [
+            "finance",
+            "SEC",
+            "fundamentals",
+            "sector-analysis"
+          ],
+          "catalog": "https://secedgarterminal.com/api/x402",
+          "description": "Offers include input/path and schema-only output metadata. Discovery indexes concrete paths; financials entries can represent specific supported tickers. The payment resource stays the exact concrete request URL. External listing is facilitator-dependent and is not asserted by this document."
+        },
+        "parameters": [
+          {
+            "name": "basis",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "ttm",
+                "annual"
+              ],
+              "default": "ttm",
+              "description": "Financial reporting basis; availability varies by company."
+            }
+          },
+          {
+            "name": "sector",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "all",
+              "description": "all, or an existing sector slug returned in the source snapshot."
+            }
+          },
+          {
+            "name": "metric",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "revenueGrowth",
+                "operatingMargin",
+                "freeCashFlowMargin",
+                "equityToAssets",
+                "netMargin",
+                "cashToAssets"
+              ],
+              "default": "revenueGrowth"
+            }
+          },
+          {
+            "name": "field",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "change",
+                "current",
+                "prior"
+              ],
+              "default": "change"
+            }
+          },
+          {
+            "name": "min",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "number",
+              "minimum": -1000000000000000,
+              "maximum": 1000000000000000
+            }
+          },
+          {
+            "name": "max",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "number",
+              "minimum": -1000000000000000,
+              "maximum": 1000000000000000
+            }
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "metric",
+                "ticker"
+              ],
+              "default": "metric"
+            }
+          },
+          {
+            "name": "order",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "desc",
+                "asc"
+              ],
+              "default": "desc"
+            }
+          },
+          {
+            "name": "missing",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "exclude",
+                "include"
+              ],
+              "default": "exclude"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 100,
+              "description": "Company rows per paid page. Each successfully settled page costs 0.01 USDC."
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9999,
+              "default": 0,
+              "description": "Zero-based row offset into the prepared snapshot."
+            }
+          },
+          {
+            "name": "snapshot",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$",
+              "description": "Pin pagination.snapshot from the first page on later requests. A changed snapshot returns 409 without settlement."
+            }
+          },
+          {
+            "name": "format",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "json",
+                "csv"
+              ],
+              "default": "json",
+              "description": "JSON result or flat CSV with source and pagination context."
+            }
+          },
+          {
+            "name": "X-X402-Recovery-Token",
+            "in": "header",
+            "required": false,
+            "description": "Optional unique random 32-byte capability encoded as 64 lowercase hexadecimal characters. Generate before the signed purchase and retain privately. Stages exact response before settlement for no-charge retrieval for 24 hours. Never put it in the URL.",
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Selected prepared product. Preserve source context, coverage, missing values and snapshot token.",
+            "headers": {
+              "PAYMENT-RESPONSE": {
+                "$ref": "#/components/headers/PaymentResponse"
+              },
+              "EXTENSION-RESPONSES": {
+                "$ref": "#/components/headers/ExtensionResponses"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaidFundamentalScreen"
+                }
+              },
+              "text/csv": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "CSV header and data rows; source and pagination metadata are included in columns."
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/X402BadRequest"
+          },
+          "402": {
+            "$ref": "#/components/responses/X402PaymentRequired"
+          },
+          "404": {
+            "description": "No companies match the selected screen; no settlement."
+          },
+          "409": {
+            "$ref": "#/components/responses/X402Conflict"
+          },
+          "413": {
+            "description": "Prepared product exceeds 4 MiB; choose fewer companies or a smaller page. No settlement."
+          },
+          "416": {
+            "$ref": "#/components/responses/X402PageOutOfRange"
+          },
+          "429": {
+            "$ref": "#/components/responses/X402RateLimited"
+          },
+          "502": {
+            "$ref": "#/components/responses/X402ResourceFailure"
+          },
+          "503": {
+            "$ref": "#/components/responses/X402Unavailable"
+          }
+        },
+        "operationId": "readPaidFundamentalScreen"
+      },
+      "head": {
+        "tags": [
+          "Paid x402 data"
+        ],
+        "summary": "HEAD is not supported and never settles payment",
+        "security": [],
+        "responses": {
+          "405": {
+            "$ref": "#/components/responses/X402MethodNotAllowed"
+          }
+        }
+      }
+    },
+    "/api/x402/v1/credit-screen": {
+      "get": {
+        "tags": [
+          "Paid x402 data"
+        ],
+        "summary": "Screen debt maturities, cash coverage and interest coverage",
+        "description": "Cache-only prepared data. One bounded successful response costs 0.01 USDC. Invalid selectors, absent data, no matches, conflicts and oversized responses are not settled. Unknown, duplicate and empty query fields are rejected. format=csv returns RFC 4180 CSV with source, selection and pagination context in columns. Screen snapshot tokens bind both source data and criteria; keep criteria identical on subsequent pages. Financial batches require every selected company to be available and are not historical as-filed archives. Responses are bounded to 4 MiB.",
+        "security": [
+          {
+            "X402Payment": []
+          }
+        ],
+        "x-x402": {
+          "version": 2,
+          "scheme": "exact",
+          "price": "0.01",
+          "currency": "USDC",
+          "network": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+          "asset": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+          "amount": "10000",
+          "decimals": 6,
+          "resourceExample": "https://secedgarterminal.com/api/x402/v1/credit-screen?limit=100&offset=0",
+          "formats": [
+            "json",
+            "csv"
+          ]
+        },
+        "x-bazaar": {
+          "extension": "bazaar",
+          "serviceName": "SEC EDGAR Terminal",
+          "iconUrl": "https://secedgarterminal.com/favicon.svg",
+          "indexing": "concrete-path",
+          "resourceExample": "https://secedgarterminal.com/api/x402/v1/factor-universe",
+          "tags": [
+            "finance",
+            "SEC",
+            "fundamentals",
+            "sector-analysis"
+          ],
+          "catalog": "https://secedgarterminal.com/api/x402",
+          "description": "Offers include input/path and schema-only output metadata. Discovery indexes concrete paths; financials entries can represent specific supported tickers. The payment resource stays the exact concrete request URL. External listing is facilitator-dependent and is not asserted by this document."
+        },
+        "parameters": [
+          {
+            "name": "sector",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "all",
+              "description": "all, or an existing sector slug returned in the source snapshot."
+            }
+          },
+          {
+            "name": "minDebt",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1000000000000000,
+              "description": "Minimum reported next-12-month debt in USD."
+            }
+          },
+          {
+            "name": "maxCashCoverage",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1000000000000000,
+              "description": "Maximum cash divided by next-12-month debt ratio."
+            }
+          },
+          {
+            "name": "minInterestCoverage",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "number",
+              "minimum": -1000000000000000,
+              "maximum": 1000000000000000
+            }
+          },
+          {
+            "name": "coverage",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "reported",
+                "complete"
+              ],
+              "default": "reported"
+            }
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "next12m",
+                "cashToNext12m",
+                "interestCoverage",
+                "ticker"
+              ],
+              "default": "next12m"
+            }
+          },
+          {
+            "name": "order",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "desc",
+                "asc"
+              ],
+              "default": "desc"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 100,
+              "description": "Company rows per paid page. Each successfully settled page costs 0.01 USDC."
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9999,
+              "default": 0,
+              "description": "Zero-based row offset into the prepared snapshot."
+            }
+          },
+          {
+            "name": "snapshot",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$",
+              "description": "Pin pagination.snapshot from the first page on later requests. A changed snapshot returns 409 without settlement."
+            }
+          },
+          {
+            "name": "format",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "json",
+                "csv"
+              ],
+              "default": "json",
+              "description": "JSON result or flat CSV with source and pagination context."
+            }
+          },
+          {
+            "name": "X-X402-Recovery-Token",
+            "in": "header",
+            "required": false,
+            "description": "Optional unique random 32-byte capability encoded as 64 lowercase hexadecimal characters. Generate before the signed purchase and retain privately. Stages exact response before settlement for no-charge retrieval for 24 hours. Never put it in the URL.",
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Selected prepared product. Preserve source context, coverage, missing values and snapshot token.",
+            "headers": {
+              "PAYMENT-RESPONSE": {
+                "$ref": "#/components/headers/PaymentResponse"
+              },
+              "EXTENSION-RESPONSES": {
+                "$ref": "#/components/headers/ExtensionResponses"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaidCreditScreen"
+                }
+              },
+              "text/csv": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "CSV header and data rows; source and pagination metadata are included in columns."
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/X402BadRequest"
+          },
+          "402": {
+            "$ref": "#/components/responses/X402PaymentRequired"
+          },
+          "404": {
+            "description": "No companies match the selected screen; no settlement."
+          },
+          "409": {
+            "$ref": "#/components/responses/X402Conflict"
+          },
+          "413": {
+            "description": "Prepared product exceeds 4 MiB; choose fewer companies or a smaller page. No settlement."
+          },
+          "416": {
+            "$ref": "#/components/responses/X402PageOutOfRange"
+          },
+          "429": {
+            "$ref": "#/components/responses/X402RateLimited"
+          },
+          "502": {
+            "$ref": "#/components/responses/X402ResourceFailure"
+          },
+          "503": {
+            "$ref": "#/components/responses/X402Unavailable"
+          }
+        },
+        "operationId": "readPaidCreditScreen"
+      },
+      "head": {
+        "tags": [
+          "Paid x402 data"
+        ],
+        "summary": "HEAD is not supported and never settles payment",
+        "security": [],
+        "responses": {
+          "405": {
+            "$ref": "#/components/responses/X402MethodNotAllowed"
+          }
+        }
+      }
+    },
+    "/api/x402/v1/delivery": {
+      "get": {
+        "operationId": "recoverPaidDelivery",
+        "tags": [
+          "Paid x402 data"
+        ],
+        "summary": "Recover the exact response of an opted-in settled purchase without paying again",
+        "description": "Provide the same private recovery token used on the original signed GET. No query parameters or payment headers are accepted. Recovery does not resubmit settlement, recompute data or expose pending content. Access expires 24 hours after staging; pending settlement may require manual reconciliation.",
+        "security": [
+          {
+            "X402RecoveryToken": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Exact original successful JSON or CSV bytes and settlement receipt",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              },
+              "text/csv": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "202": {
+            "description": "Settlement is pending; no paid content is returned"
+          },
+          "400": {
+            "description": "Missing or invalid token, query parameters or payment headers"
+          },
+          "404": {
+            "description": "Unknown or expired capability"
+          },
+          "409": {
+            "description": "Purchase failed; no paid content"
+          },
+          "429": {
+            "$ref": "#/components/responses/X402RateLimited"
+          },
+          "503": {
+            "$ref": "#/components/responses/X402Unavailable"
+          }
+        }
+      },
+      "options": {
+        "summary": "Recovery CORS preflight",
+        "responses": {
+          "204": {
+            "description": "Allowed recovery headers"
+          }
         }
       }
     }
   },
   "components": {
     "headers": {
-      "SchemaVersion": { "schema": { "type": "string" } },
-      "MethodologyVersion": { "schema": { "type": "string" } },
-      "SecSnapshotAt": { "schema": { "type": "string", "format": "date-time" } },
-      "ReportDate": { "schema": { "type": "string", "format": "date" } },
-      "CacheSource": { "schema": { "type": "string" } },
-      "DataStale": { "schema": { "type": "string", "enum": ["0", "1"] } },
-      "RateLimit": { "schema": { "type": "integer", "minimum": 0 } },
-      "RateRemaining": { "schema": { "type": "integer", "minimum": 0 } },
-      "RateReset": { "schema": { "type": "integer", "minimum": 1 } },
-      "SchemaLink": { "schema": { "type": "string" } },
+      "SchemaVersion": {
+        "schema": {
+          "type": "string"
+        }
+      },
+      "MethodologyVersion": {
+        "schema": {
+          "type": "string"
+        }
+      },
+      "SecSnapshotAt": {
+        "schema": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "ReportDate": {
+        "schema": {
+          "type": "string",
+          "format": "date"
+        }
+      },
+      "CacheSource": {
+        "schema": {
+          "type": "string"
+        }
+      },
+      "DataStale": {
+        "schema": {
+          "type": "string",
+          "enum": [
+            "0",
+            "1"
+          ]
+        }
+      },
+      "RateLimit": {
+        "schema": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "RateRemaining": {
+        "schema": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "RateReset": {
+        "schema": {
+          "type": "integer",
+          "minimum": 1
+        }
+      },
+      "SchemaLink": {
+        "schema": {
+          "type": "string"
+        }
+      },
       "PaymentRequired": {
         "description": "Base64-encoded x402 protocol v2 payment requirements. Inspect amount, asset, network, recipient and resource before signing.",
         "schema": {
@@ -804,7 +1956,9 @@
       },
       "ExtensionResponses": {
         "description": "Optional base64-encoded extension outcomes reported by the facilitator. Inspect bazaar.status (success, processing or rejected); a paid response alone does not prove external catalog admission.",
-        "schema": { "type": "string" }
+        "schema": {
+          "type": "string"
+        }
       },
       "PaymentResponse": {
         "description": "Base64-encoded x402 settlement receipt for this paid response. Keep the transaction identifier for support.",
@@ -1020,96 +2174,365 @@
       "PublicFundSummary": {
         "type": "object",
         "description": "At most ten displayed holdings with the original full-portfolio denominator. Missing numbers are null, not zero. Unavailable responses can omit summary fields and do not establish that no SEC filing exists.",
-        "required": ["kind", "status"],
+        "required": [
+          "kind",
+          "status"
+        ],
         "properties": {
-          "schemaVersion": { "const": "edgar.public-fund-summary.v1" },
-          "kind": { "enum": ["nport", "13f"] },
-          "status": { "enum": ["ready", "unavailable"] },
-          "ticker": { "type": "string" },
-          "cik": { "type": "string", "pattern": "^[0-9]{10}$" },
-          "name": { "type": "string" },
-          "seriesId": { "type": ["string", "null"] },
-          "classId": { "type": ["string", "null"] },
-          "accession": { "type": "string", "pattern": "^[0-9]{10}-[0-9]{2}-[0-9]{6}$" },
-          "valueLabel": { "enum": ["Net assets", "Reported 13F holdings value"] },
-          "totalValueUsd": { "type": ["number", "null"] },
-          "valueBasis": { "type": ["string", "null"], "description": "N-PORT net-assets provenance: reported, assets less liabilities, or unavailable." },
-          "reportDate": { "type": "string", "format": "date" },
-          "filingDate": { "type": "string", "format": "date" },
-          "retrievedAt": { "type": "string", "format": "date-time" },
-          "checkedAt": { "type": ["string", "null"], "format": "date-time" },
-          "freshUntil": { "type": ["string", "null"], "format": "date-time" },
-          "stale": { "type": "boolean", "description": "Ready evidence can be stale. False on unavailable responses is not a freshness claim." },
-          "positionCount": { "type": "integer", "minimum": 0, "description": "Full prepared portfolio position count, including positions outside the displayed top ten." },
-          "valuedCount": { "type": "integer", "minimum": 0, "description": "N-PORT positions with known USD values." },
-          "weightCount": { "type": "integer", "minimum": 0, "description": "N-PORT positions with known net-asset weights." },
-          "top10WeightPct": { "type": ["number", "null"] },
-          "weightBasis": { "type": "string", "description": "N-PORT net assets or all reported 13F holdings value; never rescaled to displayed positions." },
-          "confidentialOmitted": { "type": "boolean", "description": "13F report explicitly omits confidential holdings." },
-          "comparable": { "type": "boolean", "description": "13F report permits complete portfolio comparisons under its disclosed coverage." },
+          "schemaVersion": {
+            "const": "edgar.public-fund-summary.v1"
+          },
+          "kind": {
+            "enum": [
+              "nport",
+              "13f"
+            ]
+          },
+          "status": {
+            "enum": [
+              "ready",
+              "unavailable"
+            ]
+          },
+          "ticker": {
+            "type": "string"
+          },
+          "cik": {
+            "type": "string",
+            "pattern": "^[0-9]{10}$"
+          },
+          "name": {
+            "type": "string"
+          },
+          "seriesId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "classId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "accession": {
+            "type": "string",
+            "pattern": "^[0-9]{10}-[0-9]{2}-[0-9]{6}$"
+          },
+          "valueLabel": {
+            "enum": [
+              "Net assets",
+              "Reported 13F holdings value"
+            ]
+          },
+          "totalValueUsd": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "valueBasis": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "N-PORT net-assets provenance: reported, assets less liabilities, or unavailable."
+          },
+          "reportDate": {
+            "type": "string",
+            "format": "date"
+          },
+          "filingDate": {
+            "type": "string",
+            "format": "date"
+          },
+          "retrievedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "checkedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "freshUntil": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "stale": {
+            "type": "boolean",
+            "description": "Ready evidence can be stale. False on unavailable responses is not a freshness claim."
+          },
+          "positionCount": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Full prepared portfolio position count, including positions outside the displayed top ten."
+          },
+          "valuedCount": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "N-PORT positions with known USD values."
+          },
+          "weightCount": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "N-PORT positions with known net-asset weights."
+          },
+          "top10WeightPct": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "weightBasis": {
+            "type": "string",
+            "description": "N-PORT net assets or all reported 13F holdings value; never rescaled to displayed positions."
+          },
+          "confidentialOmitted": {
+            "type": "boolean",
+            "description": "13F report explicitly omits confidential holdings."
+          },
+          "comparable": {
+            "type": "boolean",
+            "description": "13F report permits complete portfolio comparisons under its disclosed coverage."
+          },
           "topHoldings": {
-            "type": "array", "maxItems": 10,
+            "type": "array",
+            "maxItems": 10,
             "items": {
-              "type": "object", "required": ["name", "identifier", "valueUsd", "weightPct"],
+              "type": "object",
+              "required": [
+                "name",
+                "identifier",
+                "valueUsd",
+                "weightPct"
+              ],
               "properties": {
-                "name": { "type": "string" },
-                "identifier": { "type": "string", "description": "N-PORT ISIN, CUSIP or ticker when available; 13F CUSIP. May be empty for N-PORT." },
-                "valueUsd": { "type": ["number", "null"] },
-                "weightPct": { "type": ["number", "null"] },
-                "weightSource": { "enum": ["reported", "calculated", "unavailable"] },
-                "assetCategory": { "type": "string" },
-                "payoffProfile": { "type": "string" },
-                "putCall": { "enum": ["PUT", "CALL", null] },
-                "quantityType": { "enum": ["SH", "PRN"] }
+                "name": {
+                  "type": "string"
+                },
+                "identifier": {
+                  "type": "string",
+                  "description": "N-PORT ISIN, CUSIP or ticker when available; 13F CUSIP. May be empty for N-PORT."
+                },
+                "valueUsd": {
+                  "type": [
+                    "number",
+                    "null"
+                  ]
+                },
+                "weightPct": {
+                  "type": [
+                    "number",
+                    "null"
+                  ]
+                },
+                "weightSource": {
+                  "enum": [
+                    "reported",
+                    "calculated",
+                    "unavailable"
+                  ]
+                },
+                "assetCategory": {
+                  "type": "string"
+                },
+                "payoffProfile": {
+                  "type": "string"
+                },
+                "putCall": {
+                  "enum": [
+                    "PUT",
+                    "CALL",
+                    null
+                  ]
+                },
+                "quantityType": {
+                  "enum": [
+                    "SH",
+                    "PRN"
+                  ]
+                }
               },
               "additionalProperties": false
             }
           },
           "sources": {
-            "type": "array", "maxItems": 32,
-            "items": { "type": "object", "required": ["label", "url"], "properties": { "label": { "type": "string" }, "url": { "type": "string", "format": "uri" } }, "additionalProperties": false }
+            "type": "array",
+            "maxItems": 32,
+            "items": {
+              "type": "object",
+              "required": [
+                "label",
+                "url"
+              ],
+              "properties": {
+                "label": {
+                  "type": "string"
+                },
+                "url": {
+                  "type": "string",
+                  "format": "uri"
+                }
+              },
+              "additionalProperties": false
+            }
           },
-          "limitations": { "type": "array", "items": { "type": "string" } },
-          "interactiveUrl": { "type": "string", "format": "uri-reference" },
-          "summaryUrl": { "type": "string", "format": "uri-reference" },
-          "reason": { "type": "string" },
-          "code": { "type": "string" }
+          "limitations": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "interactiveUrl": {
+            "type": "string",
+            "format": "uri-reference"
+          },
+          "summaryUrl": {
+            "type": "string",
+            "format": "uri-reference"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "code": {
+            "type": "string"
+          }
         },
         "allOf": [
-          { "if": { "properties": { "status": { "const": "ready" } } }, "then": { "required": ["schemaVersion", "name", "valueLabel", "totalValueUsd", "reportDate", "filingDate", "retrievedAt", "checkedAt", "freshUntil", "stale", "positionCount", "top10WeightPct", "weightBasis", "topHoldings", "sources", "limitations", "interactiveUrl", "summaryUrl"] }, "else": { "required": ["reason"] } },
-          { "if": { "properties": { "kind": { "const": "nport" } } }, "then": { "required": ["ticker"] }, "else": { "required": ["cik"] } }
+          {
+            "if": {
+              "properties": {
+                "status": {
+                  "const": "ready"
+                }
+              }
+            },
+            "then": {
+              "required": [
+                "schemaVersion",
+                "name",
+                "valueLabel",
+                "totalValueUsd",
+                "reportDate",
+                "filingDate",
+                "retrievedAt",
+                "checkedAt",
+                "freshUntil",
+                "stale",
+                "positionCount",
+                "top10WeightPct",
+                "weightBasis",
+                "topHoldings",
+                "sources",
+                "limitations",
+                "interactiveUrl",
+                "summaryUrl"
+              ]
+            },
+            "else": {
+              "required": [
+                "reason"
+              ]
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "kind": {
+                  "const": "nport"
+                }
+              }
+            },
+            "then": {
+              "required": [
+                "ticker"
+              ]
+            },
+            "else": {
+              "required": [
+                "cik"
+              ]
+            }
+          }
         ],
         "additionalProperties": false
       },
       "ApiError": {
         "type": "object",
-        "required": ["error", "code"],
+        "required": [
+          "error",
+          "code"
+        ],
         "properties": {
-          "schema_version": { "type": "string" },
-          "error": { "type": "string" },
-          "code": { "type": "string" },
-          "retryable": { "type": "boolean" }
+          "schema_version": {
+            "type": "string"
+          },
+          "error": {
+            "type": "string"
+          },
+          "code": {
+            "type": "string"
+          },
+          "retryable": {
+            "type": "boolean"
+          }
         }
       },
       "CftcStatus": {
         "type": "object",
-        "required": ["schema_version", "status", "checked_at", "families"],
+        "required": [
+          "schema_version",
+          "status",
+          "checked_at",
+          "families"
+        ],
         "properties": {
-          "schema_version": { "const": "edgar.cftc-positioning.v1" },
-          "status": {
-            "enum": ["ready", "degraded", "unavailable", "disabled"]
+          "schema_version": {
+            "const": "edgar.cftc-positioning.v1"
           },
-          "checked_at": { "type": "string", "format": "date-time" },
-          "error": { "type": "string" },
-          "code": { "type": "string" },
-          "retryable": { "type": "boolean" },
+          "status": {
+            "enum": [
+              "ready",
+              "degraded",
+              "unavailable",
+              "disabled"
+            ]
+          },
+          "checked_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "error": {
+            "type": "string"
+          },
+          "code": {
+            "type": "string"
+          },
+          "retryable": {
+            "type": "boolean"
+          },
           "families": {
             "type": "array",
             "items": {
               "type": "object",
-              "required": ["family", "status"],
+              "required": [
+                "family",
+                "status"
+              ],
               "properties": {
-                "family": { "enum": ["tff", "disaggregated"] },
+                "family": {
+                  "enum": [
+                    "tff",
+                    "disaggregated"
+                  ]
+                },
                 "status": {
                   "enum": [
                     "ready",
@@ -1120,24 +2543,51 @@
                     "invalid"
                   ]
                 },
-                "report_date": { "type": ["string", "null"], "format": "date" },
+                "report_date": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "format": "date"
+                },
                 "retrieved_at": {
-                  "type": ["string", "null"],
+                  "type": [
+                    "string",
+                    "null"
+                  ],
                   "format": "date-time"
                 },
                 "cache_age_seconds": {
-                  "type": ["integer", "null"],
+                  "type": [
+                    "integer",
+                    "null"
+                  ],
                   "minimum": 0
                 },
                 "source_report_age_days": {
-                  "type": ["integer", "null"],
+                  "type": [
+                    "integer",
+                    "null"
+                  ],
                   "minimum": 0
                 },
                 "source_currency": {
-                  "type": ["string", "null"],
-                  "enum": ["current", "aged", null]
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "enum": [
+                    "current",
+                    "aged",
+                    null
+                  ]
                 },
-                "cache_source": { "type": ["string", "null"] }
+                "cache_source": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
               },
               "additionalProperties": false
             }
@@ -1147,14 +2597,34 @@
       },
       "Retired": {
         "type": "object",
-        "required": ["schema_version", "error", "code", "retired"],
+        "required": [
+          "schema_version",
+          "error",
+          "code",
+          "retired"
+        ],
         "properties": {
-          "schema_version": { "const": "edgar.api-retirement.v1" },
-          "error": { "type": "string" },
-          "code": { "type": "string" },
-          "retired": { "const": true },
-          "replacement": { "type": ["string", "null"] },
-          "documentation": { "type": "string" }
+          "schema_version": {
+            "const": "edgar.api-retirement.v1"
+          },
+          "error": {
+            "type": "string"
+          },
+          "code": {
+            "type": "string"
+          },
+          "retired": {
+            "const": true
+          },
+          "replacement": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "documentation": {
+            "type": "string"
+          }
         }
       },
       "PaidPagination": {
@@ -1182,7 +2652,10 @@
             "minimum": 0
           },
           "nextOffset": {
-            "type": ["integer", "null"]
+            "type": [
+              "integer",
+              "null"
+            ]
           },
           "snapshot": {
             "type": "string",
@@ -1308,17 +2781,23 @@
           },
           "asset": {
             "type": "string",
-            "enum": ["EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"],
+            "enum": [
+              "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
+            ],
             "description": "Case-sensitive native USDC mint on Solana mainnet."
           },
           "amount": {
             "type": "string",
-            "enum": ["10000"],
+            "enum": [
+              "10000"
+            ],
             "description": "Exact per-request price in USDC token base units."
           },
           "decimals": {
             "type": "integer",
-            "enum": [6]
+            "enum": [
+              6
+            ]
           },
           "protocol": {
             "type": "string",
@@ -1339,10 +2818,22 @@
           "discovery": {
             "type": "object",
             "properties": {
-              "extension": { "type": "string", "const": "bazaar" },
-              "metadata": { "type": "string", "const": "enabled" },
-              "indexing": { "type": "string", "const": "concrete-path" },
-              "catalogRegistration": { "type": "string", "const": "facilitator-dependent" }
+              "extension": {
+                "type": "string",
+                "const": "bazaar"
+              },
+              "metadata": {
+                "type": "string",
+                "const": "enabled"
+              },
+              "indexing": {
+                "type": "string",
+                "const": "concrete-path"
+              },
+              "catalogRegistration": {
+                "type": "string",
+                "const": "facilitator-dependent"
+              }
             },
             "description": "Server discovery capability, not proof of external listing. Each resource carries its declaration and service metadata.",
             "additionalProperties": true
@@ -1454,56 +2945,1036 @@
           }
         },
         "additionalProperties": true
+      },
+      "PaidFinancialBatch": {
+        "type": "object",
+        "required": [
+          "schemaVersion",
+          "status",
+          "selection",
+          "stale",
+          "companyCount",
+          "companies",
+          "limitations"
+        ],
+        "properties": {
+          "schemaVersion": {
+            "const": "edgar.paid-financial-batch.v1"
+          },
+          "status": {
+            "const": "ready"
+          },
+          "stale": {
+            "type": "boolean"
+          },
+          "companyCount": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 10
+          },
+          "selection": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "tickers",
+              "basis"
+            ],
+            "properties": {
+              "tickers": {
+                "type": "array",
+                "minItems": 1,
+                "maxItems": 10,
+                "uniqueItems": true,
+                "items": {
+                  "type": "string",
+                  "pattern": "^[A-Z][A-Z0-9.-]{0,14}$"
+                }
+              },
+              "basis": {
+                "type": "string",
+                "enum": [
+                  "annual",
+                  "quarter",
+                  "ytd",
+                  "ttm"
+                ]
+              }
+            }
+          },
+          "companies": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 10,
+            "items": {
+              "type": "object",
+              "required": [
+                "schemaVersion",
+                "status",
+                "stale",
+                "fetchedAt",
+                "checkedAt",
+                "freshUntil",
+                "model",
+                "limitations"
+              ],
+              "properties": {
+                "schemaVersion": {
+                  "const": "edgar.paid-financials.v1"
+                },
+                "status": {
+                  "const": "ready"
+                },
+                "stale": {
+                  "type": "boolean"
+                },
+                "fetchedAt": {
+                  "type": "string"
+                },
+                "checkedAt": {
+                  "type": "string"
+                },
+                "freshUntil": {
+                  "type": "string"
+                },
+                "model": {
+                  "type": "object",
+                  "required": [
+                    "ticker",
+                    "cik",
+                    "basis",
+                    "version",
+                    "mappingVersion",
+                    "packed",
+                    "periods",
+                    "definitions",
+                    "metrics",
+                    "sourceCatalog",
+                    "calculationCatalog"
+                  ],
+                  "properties": {
+                    "ticker": {
+                      "type": "string",
+                      "pattern": "^[A-Z][A-Z0-9.-]{0,14}$"
+                    },
+                    "cik": {
+                      "type": "string",
+                      "pattern": "^(?!0+$)[0-9]{10}$"
+                    },
+                    "basis": {
+                      "type": "string",
+                      "enum": [
+                        "annual",
+                        "quarter",
+                        "ytd",
+                        "ttm"
+                      ]
+                    },
+                    "version": {
+                      "type": "string"
+                    },
+                    "mappingVersion": {
+                      "type": "string"
+                    },
+                    "packed": {
+                      "const": true
+                    },
+                    "periods": {
+                      "type": "array",
+                      "minItems": 1,
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "end"
+                        ],
+                        "properties": {
+                          "end": {
+                            "type": "string"
+                          },
+                          "start": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          }
+                        }
+                      }
+                    },
+                    "definitions": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "key",
+                          "label"
+                        ],
+                        "properties": {
+                          "key": {
+                            "type": "string"
+                          },
+                          "label": {
+                            "type": "string"
+                          },
+                          "format": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    },
+                    "metrics": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "required": [
+                            "sourceIds",
+                            "calculationIds"
+                          ],
+                          "properties": {
+                            "value": {
+                              "type": [
+                                "number",
+                                "null"
+                              ]
+                            },
+                            "sourceIds": {
+                              "type": "array",
+                              "items": {
+                                "type": "integer",
+                                "minimum": 0
+                              }
+                            },
+                            "calculationIds": {
+                              "type": "array",
+                              "items": {
+                                "type": "integer",
+                                "minimum": 0
+                              }
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "sourceCatalog": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "calculationCatalog": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    }
+                  }
+                },
+                "limitations": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          },
+          "limitations": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "PaidFundamentalScreen": {
+        "type": "object",
+        "required": [
+          "schemaVersion",
+          "status",
+          "stale",
+          "selection",
+          "snapshot",
+          "population",
+          "sectors",
+          "rows",
+          "pagination",
+          "limitations"
+        ],
+        "properties": {
+          "status": {
+            "const": "ready"
+          },
+          "stale": {
+            "type": "boolean"
+          },
+          "snapshot": {
+            "type": "object"
+          },
+          "selection": {
+            "type": "object"
+          },
+          "population": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "companies",
+              "metricEligible",
+              "metricMissing"
+            ],
+            "properties": {
+              "companies": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "metricEligible": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "metricMissing": {
+                "type": "integer",
+                "minimum": 0
+              }
+            }
+          },
+          "pagination": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "limit",
+              "offset",
+              "total",
+              "nextOffset",
+              "snapshot"
+            ],
+            "properties": {
+              "limit": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 100
+              },
+              "offset": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9999
+              },
+              "total": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "nextOffset": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "minimum": 0
+              },
+              "snapshot": {
+                "type": "string",
+                "pattern": "^[a-f0-9]{64}$"
+              }
+            }
+          },
+          "limitations": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "schemaVersion": {
+            "const": "edgar.paid-fundamental-screen.v1"
+          },
+          "rows": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 100,
+            "items": {
+              "type": "object",
+              "required": [
+                "ticker",
+                "cik",
+                "name",
+                "group",
+                "financial",
+                "metrics",
+                "source_accessions",
+                "filed",
+                "fiscal_end",
+                "prior_fiscal_end",
+                "accession",
+                "source",
+                "selectedValue",
+                "peerPercentile"
+              ],
+              "properties": {
+                "ticker": {
+                  "type": "string"
+                },
+                "cik": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "group": {
+                  "type": "string"
+                },
+                "financial": {
+                  "type": "boolean"
+                },
+                "metrics": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "revenueGrowth",
+                    "operatingMargin",
+                    "freeCashFlowMargin",
+                    "equityToAssets",
+                    "netMargin",
+                    "cashToAssets"
+                  ],
+                  "properties": {
+                    "revenueGrowth": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "current",
+                        "prior",
+                        "change",
+                        "unavailable_reason"
+                      ],
+                      "properties": {
+                        "current": {
+                          "type": [
+                            "number",
+                            "null"
+                          ]
+                        },
+                        "prior": {
+                          "type": [
+                            "number",
+                            "null"
+                          ]
+                        },
+                        "change": {
+                          "type": [
+                            "number",
+                            "null"
+                          ]
+                        },
+                        "unavailable_reason": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        }
+                      }
+                    },
+                    "operatingMargin": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "current",
+                        "prior",
+                        "change",
+                        "unavailable_reason"
+                      ],
+                      "properties": {
+                        "current": {
+                          "type": [
+                            "number",
+                            "null"
+                          ]
+                        },
+                        "prior": {
+                          "type": [
+                            "number",
+                            "null"
+                          ]
+                        },
+                        "change": {
+                          "type": [
+                            "number",
+                            "null"
+                          ]
+                        },
+                        "unavailable_reason": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        }
+                      }
+                    },
+                    "freeCashFlowMargin": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "current",
+                        "prior",
+                        "change",
+                        "unavailable_reason"
+                      ],
+                      "properties": {
+                        "current": {
+                          "type": [
+                            "number",
+                            "null"
+                          ]
+                        },
+                        "prior": {
+                          "type": [
+                            "number",
+                            "null"
+                          ]
+                        },
+                        "change": {
+                          "type": [
+                            "number",
+                            "null"
+                          ]
+                        },
+                        "unavailable_reason": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        }
+                      }
+                    },
+                    "equityToAssets": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "current",
+                        "prior",
+                        "change",
+                        "unavailable_reason"
+                      ],
+                      "properties": {
+                        "current": {
+                          "type": [
+                            "number",
+                            "null"
+                          ]
+                        },
+                        "prior": {
+                          "type": [
+                            "number",
+                            "null"
+                          ]
+                        },
+                        "change": {
+                          "type": [
+                            "number",
+                            "null"
+                          ]
+                        },
+                        "unavailable_reason": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        }
+                      }
+                    },
+                    "netMargin": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "current",
+                        "prior",
+                        "change",
+                        "unavailable_reason"
+                      ],
+                      "properties": {
+                        "current": {
+                          "type": [
+                            "number",
+                            "null"
+                          ]
+                        },
+                        "prior": {
+                          "type": [
+                            "number",
+                            "null"
+                          ]
+                        },
+                        "change": {
+                          "type": [
+                            "number",
+                            "null"
+                          ]
+                        },
+                        "unavailable_reason": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        }
+                      }
+                    },
+                    "cashToAssets": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "current",
+                        "prior",
+                        "change",
+                        "unavailable_reason"
+                      ],
+                      "properties": {
+                        "current": {
+                          "type": [
+                            "number",
+                            "null"
+                          ]
+                        },
+                        "prior": {
+                          "type": [
+                            "number",
+                            "null"
+                          ]
+                        },
+                        "change": {
+                          "type": [
+                            "number",
+                            "null"
+                          ]
+                        },
+                        "unavailable_reason": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        }
+                      }
+                    }
+                  }
+                },
+                "source_accessions": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "filed": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "fiscal_end": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "prior_fiscal_end": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "accession": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "source": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "selectedValue": {
+                  "type": [
+                    "number",
+                    "null"
+                  ]
+                },
+                "peerPercentile": {
+                  "type": [
+                    "number",
+                    "null"
+                  ],
+                  "minimum": 0,
+                  "maximum": 100
+                }
+              }
+            }
+          },
+          "sectors": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "id",
+                "label",
+                "companies"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "label": {
+                  "type": "string"
+                },
+                "companies": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              }
+            }
+          }
+        }
+      },
+      "PaidCreditScreen": {
+        "type": "object",
+        "required": [
+          "schemaVersion",
+          "status",
+          "stale",
+          "selection",
+          "snapshot",
+          "population",
+          "rows",
+          "pagination",
+          "limitations"
+        ],
+        "properties": {
+          "status": {
+            "const": "ready"
+          },
+          "stale": {
+            "type": "boolean"
+          },
+          "snapshot": {
+            "type": "object"
+          },
+          "selection": {
+            "type": "object"
+          },
+          "population": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "companies",
+              "reportedSchedules",
+              "completeSchedules"
+            ],
+            "properties": {
+              "companies": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "reportedSchedules": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "completeSchedules": {
+                "type": "integer",
+                "minimum": 0
+              }
+            }
+          },
+          "pagination": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "limit",
+              "offset",
+              "total",
+              "nextOffset",
+              "snapshot"
+            ],
+            "properties": {
+              "limit": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 100
+              },
+              "offset": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9999
+              },
+              "total": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "nextOffset": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "minimum": 0
+              },
+              "snapshot": {
+                "type": "string",
+                "pattern": "^[a-f0-9]{64}$"
+              }
+            }
+          },
+          "limitations": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "schemaVersion": {
+            "const": "edgar.paid-credit-screen.v1"
+          },
+          "rows": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 100,
+            "items": {
+              "type": "object",
+              "required": [
+                "ticker",
+                "cik",
+                "name",
+                "sectorId",
+                "profile",
+                "cashShortfallToNext12m"
+              ],
+              "properties": {
+                "ticker": {
+                  "type": "string"
+                },
+                "cik": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "sectorId": {
+                  "type": "string"
+                },
+                "cashShortfallToNext12m": {
+                  "type": [
+                    "number",
+                    "null"
+                  ],
+                  "minimum": 0
+                },
+                "profile": {
+                  "type": "object",
+                  "required": [
+                    "schemaVersion",
+                    "status",
+                    "currency",
+                    "sourceUrl",
+                    "accession",
+                    "basis",
+                    "buckets",
+                    "metrics",
+                    "coverage",
+                    "warnings"
+                  ],
+                  "properties": {
+                    "schemaVersion": {
+                      "const": "refinancing-v1"
+                    },
+                    "status": {
+                      "const": "ready"
+                    },
+                    "currency": {
+                      "const": "USD"
+                    },
+                    "sourceUrl": {
+                      "type": "string"
+                    },
+                    "accession": {
+                      "type": "string"
+                    },
+                    "basis": {
+                      "enum": [
+                        "fiscal",
+                        "rolling"
+                      ]
+                    },
+                    "buckets": {
+                      "type": "array",
+                      "minItems": 6,
+                      "maxItems": 6,
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "key",
+                          "value",
+                          "dateBasis",
+                          "tag"
+                        ],
+                        "properties": {
+                          "key": {
+                            "type": "string"
+                          },
+                          "value": {
+                            "type": [
+                              "number",
+                              "null"
+                            ],
+                            "minimum": 0
+                          },
+                          "dateBasis": {
+                            "enum": [
+                              "calendar-year",
+                              "anniversary-estimate"
+                            ]
+                          },
+                          "tag": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    },
+                    "metrics": {
+                      "type": "object"
+                    },
+                    "coverage": {
+                      "type": "object",
+                      "required": [
+                        "reportedBuckets",
+                        "totalBuckets",
+                        "complete"
+                      ],
+                      "properties": {
+                        "reportedBuckets": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 6
+                        },
+                        "totalBuckets": {
+                          "const": 6
+                        },
+                        "complete": {
+                          "type": "boolean"
+                        }
+                      }
+                    },
+                    "warnings": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
       }
     },
     "responses": {
       "PublicFundUnavailable": {
         "description": "No validated prepared summary is available, or its cache cannot be read. This does not establish that no filing exists and never starts SEC acquisition. Open the interactive research tool to request preparation.",
         "headers": {
-          "Cache-Control": { "schema": { "type": "string", "const": "private, no-store" } },
-          "Retry-After": { "schema": { "type": "integer", "const": 60 } }
+          "Cache-Control": {
+            "schema": {
+              "type": "string",
+              "const": "private, no-store"
+            }
+          },
+          "Retry-After": {
+            "schema": {
+              "type": "integer",
+              "const": 60
+            }
+          }
         },
-        "content": { "application/json": { "schema": { "allOf": [{ "$ref": "#/components/schemas/PublicFundSummary" }, { "properties": { "status": { "const": "unavailable" } } }] } } }
+        "content": {
+          "application/json": {
+            "schema": {
+              "allOf": [
+                {
+                  "$ref": "#/components/schemas/PublicFundSummary"
+                },
+                {
+                  "properties": {
+                    "status": {
+                      "const": "unavailable"
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
       },
       "BadRequest": {
         "description": "Invalid or ambiguous query",
-        "headers": { "X-Schema-Version": { "$ref": "#/components/headers/SchemaVersion" } },
+        "headers": {
+          "X-Schema-Version": {
+            "$ref": "#/components/headers/SchemaVersion"
+          }
+        },
         "content": {
           "application/json": {
-            "schema": { "$ref": "#/components/schemas/ApiError" }
+            "schema": {
+              "$ref": "#/components/schemas/ApiError"
+            }
           }
         }
       },
       "NotFound": {
         "description": "No validated observation for the requested selection",
-        "headers": { "X-Schema-Version": { "$ref": "#/components/headers/SchemaVersion" } },
+        "headers": {
+          "X-Schema-Version": {
+            "$ref": "#/components/headers/SchemaVersion"
+          }
+        },
         "content": {
           "application/json": {
-            "schema": { "$ref": "#/components/schemas/ApiError" }
+            "schema": {
+              "$ref": "#/components/schemas/ApiError"
+            }
           }
         }
       },
       "RateLimited": {
         "description": "Bounded public rate limit reached",
         "headers": {
-          "X-Schema-Version": { "$ref": "#/components/headers/SchemaVersion" },
-          "Retry-After": { "schema": { "type": "integer" } },
-          "RateLimit-Limit": { "$ref": "#/components/headers/RateLimit" },
-          "RateLimit-Remaining": { "$ref": "#/components/headers/RateRemaining" },
-          "RateLimit-Reset": { "$ref": "#/components/headers/RateReset" }
+          "X-Schema-Version": {
+            "$ref": "#/components/headers/SchemaVersion"
+          },
+          "Retry-After": {
+            "schema": {
+              "type": "integer"
+            }
+          },
+          "RateLimit-Limit": {
+            "$ref": "#/components/headers/RateLimit"
+          },
+          "RateLimit-Remaining": {
+            "$ref": "#/components/headers/RateRemaining"
+          },
+          "RateLimit-Reset": {
+            "$ref": "#/components/headers/RateReset"
+          }
         },
         "content": {
           "application/json": {
-            "schema": { "$ref": "#/components/schemas/ApiError" }
+            "schema": {
+              "$ref": "#/components/schemas/ApiError"
+            }
           }
         }
       },
       "Unavailable": {
         "description": "Prepared data or upstream source is temporarily unavailable",
-        "headers": { "X-Schema-Version": { "$ref": "#/components/headers/SchemaVersion" } },
+        "headers": {
+          "X-Schema-Version": {
+            "$ref": "#/components/headers/SchemaVersion"
+          }
+        },
         "content": {
           "application/json": {
-            "schema": { "$ref": "#/components/schemas/ApiError" }
+            "schema": {
+              "$ref": "#/components/schemas/ApiError"
+            }
           }
         }
       },
@@ -1511,35 +3982,99 @@
         "description": "The contract is permanently retired",
         "headers": {
           "Cache-Control": {
-            "schema": { "type": "string", "const": "private, no-store" }
+            "schema": {
+              "type": "string",
+              "const": "private, no-store"
+            }
           }
         },
         "content": {
           "application/json": {
-            "schema": { "$ref": "#/components/schemas/Retired" }
+            "schema": {
+              "$ref": "#/components/schemas/Retired"
+            }
           }
         }
       },
       "X402BadRequest": {
         "description": "Invalid, duplicate or unsupported selection. The request is not settled.",
-        "content": { "application/json": { "schema": { "type": "object", "required": ["error"], "properties": { "error": { "type": "string" }, "code": { "type": "string" } }, "additionalProperties": true } } }
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "required": [
+                "error"
+              ],
+              "properties": {
+                "error": {
+                  "type": "string"
+                },
+                "code": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": true
+            }
+          }
+        }
       },
       "X402RateLimited": {
         "description": "The signed-payment attempt or concurrency limit was reached before payment verification. No payment is settled. Wait for Retry-After before retrying the original request.",
-        "headers": { "Retry-After": { "schema": { "type": "integer", "minimum": 1 }, "description": "Seconds to wait before retrying." } },
-        "content": { "application/json": { "schema": { "type": "object", "properties": { "error": { "type": "string", "const": "payment_attempt_limit" } }, "additionalProperties": true } } }
+        "headers": {
+          "Retry-After": {
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "description": "Seconds to wait before retrying."
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "properties": {
+                "error": {
+                  "type": "string",
+                  "const": "payment_attempt_limit"
+                }
+              },
+              "additionalProperties": true
+            }
+          }
+        }
       },
       "X402ResourceFailure": {
         "description": "A prepared response could not be delivered as a valid billable JSON resource. Settlement was not attempted; this request is not charged.",
-        "content": { "application/json": { "schema": { "type": "object", "additionalProperties": true } } }
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "additionalProperties": true
+            }
+          }
+        }
       },
       "X402PageOutOfRange": {
         "description": "PAGE_OUT_OF_RANGE: the requested offset is beyond the prepared snapshot. The request is not settled.",
-        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" } } }
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ApiError"
+            }
+          }
+        }
       },
       "X402MethodNotAllowed": {
         "description": "HEAD is unsupported and returns no body. Only GET and OPTIONS are supported on paid resources; HEAD never verifies or settles a payment.",
-        "headers": { "Allow": { "schema": { "type": "string", "const": "GET, OPTIONS" } } }
+        "headers": {
+          "Allow": {
+            "schema": {
+              "type": "string",
+              "const": "GET, OPTIONS"
+            }
+          }
+        }
       },
       "X402PaymentRequired": {
         "description": "An unpaid valid resource returns PAYMENT-REQUIRED with the offer. Verification failures or definitive settlement rejection can also return 402 and may include PAYMENT-RESPONSE without a fresh offer. Do not assume every 402 permits a new authorization. Inspect the error and preserve transaction information; do not automatically sign a replacement after a paid attempt. Payment configuration is checked before an offer; source readiness is checked before settlement.",
@@ -1589,6 +4124,12 @@
         "in": "header",
         "name": "PAYMENT-SIGNATURE",
         "description": "x402 v2 signed payment authorization, not a static API key. Obtain requirements from a 402 response, validate the offer and sign with a funded Solana wallet."
+      },
+      "X402RecoveryToken": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-X402-Recovery-Token",
+        "description": "Private random client capability for an opted-in purchase. No wallet signature or new payment is required to recover an already settled response."
       }
     }
   }

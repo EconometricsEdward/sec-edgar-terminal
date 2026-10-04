@@ -12,7 +12,7 @@ const FACILITATOR = 'https://facilitator.payai.network';
 const MINT = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
 const feePayer = await generateKeyPairSigner();
 const offers = DISCOVERY_REQUESTS.map((url, i) => {
-  const { extensions, ...metadata } = x402DiscoveryOptions(['financials', 'factor-universe', 'refinancing'][i]);
+  const { extensions, ...metadata } = x402DiscoveryOptions(['financials', 'factor-universe', 'refinancing', 'financial-batch', 'fundamental-screen', 'credit-screen'][i]);
   delete metadata.routePattern;
   extensions.bazaar.info.input.method = 'GET';
   return { x402Version: 2, resource: { url, description: 'Prepared SEC research', mimeType: 'application/json', ...metadata }, extensions,
@@ -51,9 +51,9 @@ function transport({ register = false, altered = false } = {}) {
 test('discovery audit is read-only by default and distinguishes valid offers from unlisted resources', async () => {
   const mock = transport();
   const result = await checkDiscovery({ fetchImpl: mock.fetch, createPayload: () => { throw new Error('Read-only mode must not generate payment payloads'); } });
-  assert.equal(mock.calls.length, 7);
+  assert.equal(mock.calls.length, DISCOVERY_REQUESTS.length * 2 + 1);
   assert.ok(mock.calls.every(call => call.method === 'GET'));
-  assert.equal(result.resources.length, 3);
+  assert.equal(result.resources.length, DISCOVERY_REQUESTS.length);
   assert.equal(result.resources[0].resource, 'https://secedgarterminal.com/api/x402/v1/financials/AAPL');
   assert.equal(result.resources[1].resource, 'https://secedgarterminal.com/api/x402/v1/factor-universe');
   assert.ok(result.resources.every(resource => !resource.listing.listed));
@@ -146,7 +146,7 @@ test('genuine SDK registration echoes declarations and sends only verify; result
     const createPayload = await createEphemeralPayloadBuilder({ rpcUrl: `http://127.0.0.1:${rpc.address().port}` });
     const mock = transport({ register: true });
     const result = await checkDiscovery({ register: true, fetchImpl: mock.fetch, createPayload });
-    assert.equal(mock.calls.filter(call => call.method === 'POST').length, 3);
+    assert.equal(mock.calls.filter(call => call.method === 'POST').length, DISCOVERY_REQUESTS.length);
     assert.ok(mock.calls.filter(call => call.method === 'POST').every(call => call.url === `${FACILITATOR}/verify`));
     assert.ok(methods.every(method => ['getAccountInfo', 'getLatestBlockhash'].includes(method)));
     assert.ok(result.resources.every(resource => resource.registration.extension.status === 'processing' && resource.registration.isValid === false));

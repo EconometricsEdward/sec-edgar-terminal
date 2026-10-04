@@ -63,6 +63,11 @@ function fixture() {
       ready: () => true,
       async claim(payment) { state.claims.push(payment); return { claimed: true, token: { owner: payment.requestId } }; },
       async finish(receipt) { state.finishes.push(receipt); },
+      async stageDelivery(delivery) {
+        assert.match(delivery.recoveryHash, /^[a-f0-9]{64}$/);
+        assert.ok(Buffer.isBuffer(delivery.bytes));
+        return { expiresAt: new Date(Date.now() + 86400000).toISOString() };
+      },
     },
   });
   return { state, fetch: async request => { state.requests++; assert.equal(request.url, resourceUrl); return paid(request); } };

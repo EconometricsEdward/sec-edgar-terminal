@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import {
   ArrowRight, ArrowUpRight, Activity, BarChart3, BookOpen,
-  FileSearch, FileText, GitCompareArrows, Globe2, Layers3, ShieldCheck,
+  Database, FileSearch, FileText, GitCompareArrows, Globe2, Layers3, ListFilter, ShieldCheck,
 } from "lucide-react";
 import HomeResearch from "../components/site/HomeResearch";
 import ResearchWorkflow from "../components/site/ResearchWorkflow";
@@ -117,6 +117,20 @@ export default function HomePage() {
       </section>
 
       <HomeResearch cftcEnabled={cftcEnabled} />
+
+      <section className={styles.dataProducts} aria-labelledby="data-products-title">
+        <div className={styles.sectionHeading}>
+          <div><p className={styles.eyebrow}>For agents & developers</p><h2 id="data-products-title">Put the research into your workflow.</h2></div>
+          <Link href="/data-access" prefetch={false}>Explore the Data API <ArrowRight size={16} aria-hidden="true" /></Link>
+        </div>
+        <p className={styles.dataIntro}>Prepared SEC data through paid x402 requests. Batch financials, select a fundamental universe or screen debt and liquidity, with JSON and CSV delivery.</p>
+        <div className={styles.dataGrid}>
+          <Link href="/data-access#financial-batch" prefetch={false}><Layers3 size={21} strokeWidth={1.6} aria-hidden="true" /><h3>Batch company financials</h3><p>Retrieve up to 10 prepared company histories in one request.</p><span>Build a watchlist model <ArrowUpRight size={15} aria-hidden="true" /></span></Link>
+          <Link href="/data-access#fundamental-screen" prefetch={false}><ListFilter size={21} strokeWidth={1.6} aria-hidden="true" /><h3>Screen fundamentals</h3><p>Filter and sort filing-based company metrics, then export a selected page.</p><span>Select a research universe <ArrowUpRight size={15} aria-hidden="true" /></span></Link>
+          <Link href="/data-access#credit-screen" prefetch={false}><Database size={21} strokeWidth={1.6} aria-hidden="true" /><h3>Screen credit data</h3><p>Select prepared debt, liquidity, maturity and coverage measures.</p><span>Focus a refinancing review <ArrowUpRight size={15} aria-hidden="true" /></span></Link>
+        </div>
+        <p className={styles.dataNote}>Starter pricing: 0.01 USDC per successfully settled bounded GET. Public research stays free. Coverage and reporting dates vary; source context travels with the prepared data.</p>
+      </section>
 
       <section className={styles.sourceNote} aria-labelledby="sources-title">
         <BookOpen size={27} strokeWidth={1.5} aria-hidden="true" />
