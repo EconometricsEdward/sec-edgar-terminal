@@ -4,6 +4,7 @@ import { buildPageMetadata } from '../../utils/siteMetadata';
 import { getX402PublicConfiguration } from '../../utils/x402Payments.js';
 import { getX402LivePublicConfiguration } from '../../utils/x402SolanaRecipient.js';
 import { X402_RESOURCES } from '../../utils/x402Catalog.js';
+import { buildX402BuyerExample } from '../../utils/x402BuyerExample.js';
 import styles from './data-access.module.css';
 
 export const dynamic = 'force-dynamic';
@@ -15,45 +16,9 @@ export const metadata = buildPageMetadata({
 });
 
 const requestExample = "curl -i 'https://secedgarterminal.com/api/x402/v1/factor-universe?basis=ttm&limit=100&offset=0'";
-const clientExample = `import { x402Client, wrapFetchWithPayment } from '@x402/fetch';
-import { ExactSvmScheme } from '@x402/svm/exact/client';
-import { createKeyPairSignerFromBytes } from '@solana/kit';
-import { readFileSync } from 'node:fs';
-
-// Local development wallet only; never upload its keypair to this site.
-const file = process.env.PAYER_KEYPAIR_FILE;
-if (!file) throw new Error('Choose your local wallet keypair file');
-const bytes = JSON.parse(readFileSync(file, 'utf8'));
-if (!Array.isArray(bytes) || bytes.length !== 64
-  || bytes.some(value => !Number.isInteger(value) || value < 0 || value > 255)) {
-  throw new Error('Expected a Solana CLI 64-byte keypair JSON file');
-}
-const signer = await createKeyPairSignerFromBytes(Uint8Array.from(bytes));
-const expectedRecipient = '5qe4MpMXzT6TeaUNZz7ApAzoQzTGpVWbz1VBGbGhrdiR';
-const url = 'https://secedgarterminal.com/api/x402/v1/factor-universe?basis=ttm&limit=100&offset=0';
-const usdc = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
-const network = 'solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp';
-const client = new x402Client({
-  spendControls: { maxAmountPerPayment: '$0.01' },
-});
-client.register(network, new ExactSvmScheme(signer));
-client.onBeforePaymentCreation(async ({ paymentRequired, selectedRequirements: offer }) => {
-  if (offer.network !== network
-    || offer.asset !== usdc
-    || BigInt(offer.amount) !== 10000n
-    || offer.payTo !== expectedRecipient
-    || paymentRequired.resource.url !== url) {
-    return { abort: true, reason: 'Unexpected payment offer' };
-  }
-});
-const paidFetch = wrapFetchWithPayment(fetch, client);
-
-const response = await paidFetch(url);
-if (!response.ok) throw new Error(\`Request failed: \${response.status}\`);
-const data = await response.json();`;
-
 export default async function DataAccessPage() {
   const configuration = await getX402LivePublicConfiguration(getX402PublicConfiguration());
+  const clientExample = buildX402BuyerExample(configuration);
   const active = configuration.status === 'active';
   const paymentStatus = active ? 'Payments active'
     : configuration.status === 'recipient-setup-required' ? 'USDC receiving account setup required'
@@ -109,7 +74,7 @@ export default async function DataAccessPage() {
         <pre className={styles.code}><code>{requestExample}</code></pre>
         <details className={styles.example}>
           <summary>Node.js client example using the official x402 SDK</summary>
-          <p>Install <code>@x402/fetch</code>, <code>@x402/svm</code> and <code>@solana/kit</code>. This local Node.js example uses a funded development wallet and a private keypair file on your own computer. Confirm the public recipient in the catalog before running it. Production agents should use a constrained signing service with a total spending limit. This example checks the exact 0.01 USDC amount, mint, recipient and network before signing.</p>
+          <p>Install the tested packages with <code>npm install @x402/core@2.28.0 @x402/fetch@2.28.0 @x402/svm@2.28.0 @solana/kit@6.9.0</code>. Save the example as a local <code>.mjs</code> file. It uses a funded development wallet and a private keypair file on your own computer. Confirm the public recipient in the catalog before running it. Production agents should use a constrained signing service with a total spending limit. This example checks the exact 0.01 USDC amount, mint, recipient and network before signing, and prints the receipt with the data.</p>
           <p>A pending or unknown settlement needs reconciliation before another authorization. HTTP 409 may indicate an already-used payment. Keep the payment receipt and transaction information; do not automatically sign a replacement payment after an error.</p>
           <pre className={styles.code}><code>{clientExample}</code></pre>
           <a href='https://docs.x402.org/getting-started/quickstart-for-buyers' target='_blank' rel='noopener noreferrer'>Official buyer guide <ArrowUpRight size={14} aria-hidden='true' /></a>

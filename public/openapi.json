@@ -499,7 +499,7 @@
             }
           },
           "400": {
-            "$ref": "#/components/responses/BadRequest"
+            "$ref": "#/components/responses/X402BadRequest"
           },
           "402": {
             "$ref": "#/components/responses/X402PaymentRequired"
@@ -507,9 +507,24 @@
           "409": {
             "$ref": "#/components/responses/X402Conflict"
           },
+          "429": {
+            "$ref": "#/components/responses/X402RateLimited"
+          },
+          "502": {
+            "$ref": "#/components/responses/X402ResourceFailure"
+          },
           "503": {
             "$ref": "#/components/responses/X402Unavailable"
           }
+        }
+      },
+      "head": {
+        "tags": ["Paid x402 data"],
+        "summary": "HEAD is not supported and never settles payment",
+        "security": [],
+        "parameters": [{ "name": "ticker", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "responses": {
+          "405": { "$ref": "#/components/responses/X402MethodNotAllowed" }
         }
       }
     },
@@ -584,7 +599,7 @@
             }
           },
           "400": {
-            "$ref": "#/components/responses/BadRequest"
+            "$ref": "#/components/responses/X402BadRequest"
           },
           "402": {
             "$ref": "#/components/responses/X402PaymentRequired"
@@ -592,9 +607,26 @@
           "409": {
             "$ref": "#/components/responses/X402Conflict"
           },
+          "416": {
+            "$ref": "#/components/responses/X402PageOutOfRange"
+          },
+          "429": {
+            "$ref": "#/components/responses/X402RateLimited"
+          },
+          "502": {
+            "$ref": "#/components/responses/X402ResourceFailure"
+          },
           "503": {
             "$ref": "#/components/responses/X402Unavailable"
           }
+        }
+      },
+      "head": {
+        "tags": ["Paid x402 data"],
+        "summary": "HEAD is not supported and never settles payment",
+        "security": [],
+        "responses": {
+          "405": { "$ref": "#/components/responses/X402MethodNotAllowed" }
         }
       }
     },
@@ -681,7 +713,7 @@
             }
           },
           "400": {
-            "$ref": "#/components/responses/BadRequest"
+            "$ref": "#/components/responses/X402BadRequest"
           },
           "402": {
             "$ref": "#/components/responses/X402PaymentRequired"
@@ -689,9 +721,26 @@
           "409": {
             "$ref": "#/components/responses/X402Conflict"
           },
+          "416": {
+            "$ref": "#/components/responses/X402PageOutOfRange"
+          },
+          "429": {
+            "$ref": "#/components/responses/X402RateLimited"
+          },
+          "502": {
+            "$ref": "#/components/responses/X402ResourceFailure"
+          },
           "503": {
             "$ref": "#/components/responses/X402Unavailable"
           }
+        }
+      },
+      "head": {
+        "tags": ["Paid x402 data"],
+        "summary": "HEAD is not supported and never settles payment",
+        "security": [],
+        "responses": {
+          "405": { "$ref": "#/components/responses/X402MethodNotAllowed" }
         }
       }
     }
@@ -1417,11 +1466,35 @@
           }
         }
       },
+      "X402BadRequest": {
+        "description": "Invalid, duplicate or unsupported selection. The request is not settled.",
+        "content": { "application/json": { "schema": { "type": "object", "required": ["error"], "properties": { "error": { "type": "string" }, "code": { "type": "string" } }, "additionalProperties": true } } }
+      },
+      "X402RateLimited": {
+        "description": "The signed-payment attempt or concurrency limit was reached before payment verification. No payment is settled. Wait for Retry-After before retrying the original request.",
+        "headers": { "Retry-After": { "schema": { "type": "integer", "minimum": 1 }, "description": "Seconds to wait before retrying." } },
+        "content": { "application/json": { "schema": { "type": "object", "properties": { "error": { "type": "string", "const": "payment_attempt_limit" } }, "additionalProperties": true } } }
+      },
+      "X402ResourceFailure": {
+        "description": "A prepared response could not be delivered as a valid billable JSON resource. Settlement was not attempted; this request is not charged.",
+        "content": { "application/json": { "schema": { "type": "object", "additionalProperties": true } } }
+      },
+      "X402PageOutOfRange": {
+        "description": "PAGE_OUT_OF_RANGE: the requested offset is beyond the prepared snapshot. The request is not settled.",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" } } }
+      },
+      "X402MethodNotAllowed": {
+        "description": "HEAD is unsupported and returns no body. Only GET and OPTIONS are supported on paid resources; HEAD never verifies or settles a payment.",
+        "headers": { "Allow": { "schema": { "type": "string", "const": "GET, OPTIONS" } } }
+      },
       "X402PaymentRequired": {
-        "description": "Valid paid resource requires payment authorization. Payment configuration is checked before a challenge is offered; source readiness is checked before settlement.",
+        "description": "An unpaid valid resource returns PAYMENT-REQUIRED with the offer. Verification failures or definitive settlement rejection can also return 402 and may include PAYMENT-RESPONSE without a fresh offer. Do not assume every 402 permits a new authorization. Inspect the error and preserve transaction information; do not automatically sign a replacement after a paid attempt. Payment configuration is checked before an offer; source readiness is checked before settlement.",
         "headers": {
           "PAYMENT-REQUIRED": {
             "$ref": "#/components/headers/PaymentRequired"
+          },
+          "PAYMENT-RESPONSE": {
+            "$ref": "#/components/headers/PaymentResponse"
           }
         },
         "content": {

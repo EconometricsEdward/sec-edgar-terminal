@@ -7,6 +7,8 @@ import { TOKEN_PROGRAM_ADDRESS } from '@solana-program/token';
 import { x402Client } from '@x402/core/client';
 import { ExactSvmScheme as ExactSvmClient } from '@x402/svm/exact/client';
 import { ExactSvmScheme as ExactSvmFacilitator } from '@x402/svm/exact/facilitator';
+import { FacilitatorResponseError, FacilitatorTimeoutError } from '@x402/core/server';
+import { SettleError } from '@x402/core/types';
 import {
   createPaidHandler, createX402FacilitatorClient, createX402AttemptGate, getX402Config, getX402PublicConfiguration,
   X402_AMOUNT, X402_SOLANA_NETWORK, X402_SOLANA_USDC,
@@ -75,6 +77,7 @@ function fixture({ handler = () => Response.json({ cik: '320193', value: 42 }), 
       assert.equal(requirements.network, X402_SOLANA_NETWORK);
       assert.equal(state.claims, 1, 'durable reservation precedes settlement');
       assert.equal(state.reads, 1, 'successful data preparation precedes settlement');
+      if (typeof settlement === 'function') return settlement(state.settles);
       if (settlement instanceof Error) throw settlement;
       return settlement || { success: true, transaction: mockReceipt, network: requirements.network, payer: buyer.address, amount: requirements.amount };
     },
@@ -94,7 +97,10 @@ function fixture({ handler = () => Response.json({ cik: '320193', value: 42 }), 
       state.claims++;
       return { claimed: true, token: { owner: input.requestId } };
     },
-    async finish(input) { state.finishes.push(input); },
+    async finish(input) {
+      if (input.errorCode !== undefined) assert.match(input.errorCode, /^[a-z0-9_]{1,80}$/, 'receipt errors match the durable ledger contract');
+      state.finishes.push(input);
+    },
   };
   const paid = createPaidHandler(async (...args) => { state.reads++; return handler(...args); }, {
     description: 'Offline test company package', config: configuration, facilitatorClient, ledger, validate, attemptGate, recipientCheck,
@@ -159,6 +165,22 @@ test('genuine SDK client signs, mock facilitator cryptographically verifies, and
   assert.equal(state.verifies, 1);
   assert.equal(state.settles, 1);
   assert.equal(state.finishes.at(-1).status, 'settled');
+});
+
+test('successful paid CORS exposes the price, freshness, discovery and payment headers', async () => {
+  const { paid } = fixture({ handler: () => Response.json({ value: 42 }, { headers: {
+    'X-X402-Price': '0.01 USDC', 'X-Data-Stale': '1', Link: '</data-access>; rel="help"',
+    'Access-Control-Expose-Headers': 'X-X402-Price, X-Data-Stale, Link',
+  } }) });
+  const response = await paid(signedRequest(await paymentPayload(paid)));
+  assert.equal(response.status, 200);
+  const exposed = response.headers.get('access-control-expose-headers').toLowerCase().split(/,\s*/);
+  for (const name of ['payment-required', 'payment-response', 'x-content-sha256', 'x-x402-price', 'x-data-stale', 'link', 'retry-after']) {
+    assert.ok(exposed.includes(name), `${name} is readable by browser buyers`);
+  }
+  assert.equal(response.headers.get('x-x402-price'), '0.01 USDC');
+  assert.equal(response.headers.get('x-data-stale'), '1');
+  assert.equal(response.headers.get('link'), '</data-access>; rel="help"');
 });
 
 test('paid handler forwards validated route context to the resource reader', async () => {
@@ -314,6 +336,138 @@ test('settlement failure and malformed settlement receipts withhold prepared con
       assert.equal(state.finishes.at(-1).payer, buyer.address);
     }
   }
+});
+
+test('SDK settlement transport failures preserve pending status and request reconciliation without another authorization', async () => {
+  for (const settlement of [new TypeError('fetch failed'), new FacilitatorTimeoutError('settle', 20000),
+    new FacilitatorResponseError('Invalid JSON after settlement'),
+    new SettleError(502, { success: false, errorReason: 'unexpected_settle_error', transaction: '', network: X402_SOLANA_NETWORK }),
+    () => null,
+    () => ({ success: 'true', transaction: '', network: X402_SOLANA_NETWORK, payer: buyer.address }),
+  ]) {
+    const { paid, state } = fixture({ settlement });
+    const payload = await paymentPayload(paid);
+    const response = await paid(signedRequest(payload));
+    assert.equal(response.status, 503);
+    assertPrivate(response);
+    const body = await response.json();
+    assert.equal(body.error, 'settlement_indeterminate');
+    assert.match(body.paymentHash, /^[a-f0-9]{64}$/);
+    assert.match(body.retry, /Do not create another payment authorization/);
+    assert.equal(body.transaction, undefined);
+    assert.equal(state.finishes.at(-1).status, 'pending');
+    assert.equal(state.finishes.at(-1).errorCode, 'settlement_indeterminate');
+    assert.equal((await paid(signedRequest(payload))).status, 409);
+    assert.equal(state.settles, 1, 'uncertain settlement never releases the replay reservation');
+  }
+});
+
+test('first uncertain response retains a known transaction even when its outcome is malformed or a server error', async () => {
+  for (const settlement of [
+    new SettleError(500, { success: false, errorReason: 'internal_server_error', transaction: mockReceipt, network: X402_SOLANA_NETWORK }),
+    () => ({ success: false, transaction: mockReceipt, network: X402_SOLANA_NETWORK }),
+    () => ({ success: 'true', transaction: mockReceipt, network: X402_SOLANA_NETWORK }),
+  ]) {
+    const { paid, state } = fixture({ settlement });
+    const payload = await paymentPayload(paid);
+    const response = await paid(signedRequest(payload));
+    assert.equal(response.status, 503);
+    assert.equal((await response.json()).transaction, mockReceipt);
+    assert.equal(state.finishes.at(-1).status, 'pending');
+    assert.equal(state.finishes.at(-1).transaction, mockReceipt);
+    assert.equal(state.finishes.at(-1).payer, buyer.address);
+    assert.equal((await paid(signedRequest(payload))).status, 409);
+    assert.equal(state.settles, 1);
+  }
+});
+
+test('generic facilitator failure without a known settlement verdict remains pending', async () => {
+  for (const reason of ['Settlement failed', 'unknown reason']) {
+    const { paid, state } = fixture({ settlement: { success: false, errorReason: reason,
+      transaction: '', network: X402_SOLANA_NETWORK } });
+    const payload = await paymentPayload(paid);
+    const response = await paid(signedRequest(payload));
+    assert.equal(response.status, 503);
+    assert.equal((await response.json()).error, 'settlement_indeterminate');
+    assert.equal(state.finishes.at(-1).status, 'pending');
+    assert.equal((await paid(signedRequest(payload))).status, 409);
+    assert.equal(state.settles, 1);
+  }
+});
+
+test('SDK pending settlement retry retains its known transaction when the retry times out', async () => {
+  const { paid, state } = fixture({ settlement: attempt => {
+    if (attempt === 1) return { success: false, errorReason: 'settlement_pending', transaction: mockReceipt,
+      network: X402_SOLANA_NETWORK, payer: buyer.address };
+    throw new FacilitatorTimeoutError('settle', 20000);
+  } });
+  const payload = await paymentPayload(paid);
+  const response = await paid(signedRequest(payload));
+  assert.equal(response.status, 503);
+  const body = await response.json();
+  assert.equal(body.transaction, mockReceipt);
+  assert.equal(state.finishes.at(-1).status, 'pending');
+  assert.equal(state.finishes.at(-1).transaction, mockReceipt);
+  assert.equal(state.finishes.at(-1).network, X402_SOLANA_NETWORK);
+  assert.equal(state.finishes.at(-1).payer, buyer.address);
+  assert.equal(state.settles, 2, 'installed SDK performs its single pending retry');
+  assert.equal((await paid(signedRequest(payload))).status, 409);
+  assert.equal(state.settles, 2);
+});
+
+test('SDK retry cannot replace an earlier broadcast transaction with a final rejection', async () => {
+  const { paid, state } = fixture({ settlement: attempt => attempt === 1
+    ? { success: false, errorReason: 'settlement_pending', transaction: mockReceipt, network: X402_SOLANA_NETWORK }
+    : { success: false, errorReason: 'insufficient_funds', transaction: '', network: X402_SOLANA_NETWORK } });
+  const payload = await paymentPayload(paid);
+  const response = await paid(signedRequest(payload));
+  assert.equal(response.status, 503);
+  assert.equal((await response.json()).transaction, mockReceipt);
+  assert.equal(state.finishes.at(-1).status, 'pending');
+  assert.equal(state.finishes.at(-1).transaction, mockReceipt);
+  assert.equal((await paid(signedRequest(payload))).status, 409);
+  assert.equal(state.settles, 2);
+});
+
+test('SDK retry success for the same broadcast transaction records settlement and delivers the data', async () => {
+  const { paid, state } = fixture({ settlement: attempt => attempt === 1
+    ? { success: false, errorReason: 'settlement_pending', transaction: mockReceipt, network: X402_SOLANA_NETWORK }
+    : { success: true, transaction: mockReceipt, network: X402_SOLANA_NETWORK, payer: buyer.address, amount: X402_AMOUNT } });
+  const payload = await paymentPayload(paid);
+  const response = await paid(signedRequest(payload));
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), { cik: '320193', value: 42 });
+  assert.equal(state.finishes.at(-1).status, 'settled');
+  assert.equal(state.finishes.at(-1).transaction, mockReceipt);
+  assert.equal(decode(response.headers.get('PAYMENT-RESPONSE')).transaction, mockReceipt);
+  assert.equal((await paid(signedRequest(payload))).status, 409);
+  assert.equal(state.settles, 2);
+});
+
+test('definitive facilitator rejection remains a failed payment and receipt errors fit the ledger contract', async () => {
+  const reason = 'Rejected: invalid spending policy / supplied proof! '.repeat(4);
+  for (const settlement of [
+    { success: false, errorReason: 'insufficient_funds', transaction: '', network: X402_SOLANA_NETWORK },
+    new SettleError(400, { success: false, errorReason: reason, transaction: '', network: X402_SOLANA_NETWORK }),
+  ]) {
+    const { paid, state } = fixture({ settlement });
+    const response = await paid(signedRequest(await paymentPayload(paid)));
+    assert.equal(response.status, 402);
+    assert.equal(state.finishes.at(-1).status, 'failed');
+    assert.match(state.finishes.at(-1).errorCode, /^[a-z0-9_]{1,80}$/);
+    assert.equal(state.finishes.at(-1).transaction, undefined);
+    assert.equal(state.settles, 1);
+  }
+});
+
+test('duplicate settlement without a transaction remains unresolved and cannot release data', async () => {
+  const { paid, state } = fixture({ settlement: { success: false, errorReason: 'duplicate_settlement',
+    transaction: '', network: X402_SOLANA_NETWORK } });
+  const response = await paid(signedRequest(await paymentPayload(paid)));
+  assert.equal(response.status, 503);
+  assert.equal((await response.json()).error, 'settlement_indeterminate');
+  assert.equal(state.finishes.at(-1).status, 'pending');
+  assert.equal(state.settles, 1);
 });
 
 test('resource URL mismatch is rejected before reservation and work', async () => {

@@ -16,7 +16,7 @@ const BASE_HEADERS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, OPTIONS',
   'Access-Control-Allow-Headers': 'Accept, Content-Type, PAYMENT-SIGNATURE',
-  'Access-Control-Expose-Headers': 'PAYMENT-REQUIRED, PAYMENT-RESPONSE, X-Content-SHA256, Retry-After',
+  'Access-Control-Expose-Headers': 'PAYMENT-REQUIRED, PAYMENT-RESPONSE, X-Content-SHA256, X-X402-Price, X-Data-Stale, Link, Retry-After',
   'X-Content-Type-Options': 'nosniff',
 };
 
@@ -115,6 +115,50 @@ function stableJson(value) {
 }
 
 function hash(value) { return createHash('sha256').update(value).digest('hex'); }
+
+function receiptErrorCode(value, fallback = 'settlement_failed') {
+  const code = String(value ?? '').toLowerCase().replace(/[^a-z0-9_]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 80);
+  return code || fallback;
+}
+
+function unresolvedSettlementReason(value) {
+  return ['settlement_pending', 'settlement_indeterminate', 'duplicate_settlement',
+    'settlement_failed', 'unknown', 'unknown_reason', 'unknown_error'].includes(receiptErrorCode(value));
+}
+
+/** Keep an already-broadcast transaction when the SDK's one pending retry loses its response. */
+function preserveSettlementOutcome(facilitator, SettleError) {
+  const pending = new Map();
+  return {
+    getSupported: facilitator.getSupported.bind(facilitator),
+    verify: facilitator.verify.bind(facilitator),
+    async settle(payload, requirements) {
+      // Retain only a hash and public transaction identifier, never the signed proof.
+      const key = hash(stableJson({ payload, requirements }));
+      const previous = pending.get(key);
+      pending.delete(key);
+      const uncertain = transaction => ({ success: false, errorReason: 'settlement_indeterminate',
+        network: requirements.network, transaction: previous || (validBase58Bytes(transaction, 64) ? transaction : '') });
+      let result;
+      try { result = await facilitator.settle(payload, requirements); }
+      catch (error) {
+        if (!(error instanceof SettleError)) return uncertain();
+        if (error.statusCode >= 500 || error.statusCode === 408 || !error.errorReason) return uncertain(error.transaction);
+        // A structured facilitator rejection remains definitive unless an earlier
+        // attempt already returned a broadcast transaction needing reconciliation.
+        result = { success: false, errorReason: error.errorReason, errorMessage: error.errorMessage,
+          transaction: error.transaction || '', network: error.network || requirements.network, payer: error.payer };
+      }
+      if (previous && (!result?.success || result.transaction !== previous)) return uncertain(result?.transaction);
+      if (!result || typeof result.success !== 'boolean' || !result.success && !result.errorReason) return uncertain(result?.transaction);
+      if (!result.success && result.errorReason === 'settlement_pending' && validBase58Bytes(result.transaction, 64)) {
+        pending.set(key, result.transaction);
+        if (pending.size > 64) pending.delete(pending.keys().next().value);
+      }
+      return result;
+    },
+  };
+}
 
 /** Extract identity from signed message bytes, never editable HTTP metadata or fee-payer signature slots. */
 async function verifiedSvmPayment(paymentPayload, requirements, config) {
@@ -271,11 +315,13 @@ export function createPaidHandler(handler, options = {}) {
     if (!serverPromise || previousConfig !== key) {
       previousConfig = key;
       serverPromise = (async () => {
-        const [{ x402ResourceServer, x402HTTPResourceServer }, { ExactSvmScheme }] = await Promise.all([
+        const [{ x402ResourceServer, x402HTTPResourceServer }, { ExactSvmScheme }, { SettleError }] = await Promise.all([
           import('@x402/core/server'), import('@x402/svm/exact/server'),
+          import('@x402/core/types'),
         ]);
         const facilitator = options.facilitatorClient || await createX402FacilitatorClient(config);
-        const resourceServer = new x402ResourceServer(facilitator).register(config.network, new ExactSvmScheme());
+        const resourceServer = new x402ResourceServer(preserveSettlementOutcome(facilitator, SettleError))
+          .register(config.network, new ExactSvmScheme());
         await resourceServer.initialize();
         return { resourceServer, x402HTTPResourceServer };
       })();
@@ -369,7 +415,8 @@ export function createPaidHandler(handler, options = {}) {
       });
       const finish = async (status, details = {}) => {
         try {
-          await ledger.finish({ paymentHash, requestId, token: claim.token, status, ...details });
+          await ledger.finish({ paymentHash, requestId, token: claim.token, status, ...details,
+            ...(details.errorCode === undefined ? {} : { errorCode: receiptErrorCode(details.errorCode) }) });
         } catch {
           // Never discard a successfully settled resource or release a reservation
           // after an uncertain database write. Emit no signature/credential data.
@@ -428,10 +475,14 @@ export function createPaidHandler(handler, options = {}) {
         return errorResponse(503, 'settlement_indeterminate', { paymentHash, retry: 'Do not create another payment authorization; reconcile this payment.' });
       }
       if (!settlement.success) {
-        const status = settlement.errorReason === 'settlement_pending' || settlement.transaction ? 'pending' : 'failed';
+        const status = unresolvedSettlementReason(settlement.errorReason) || settlement.transaction ? 'pending' : 'failed';
         await finish(status, status === 'pending'
           ? pendingDetails(settlement, settlement.errorReason || 'settlement_failed')
           : { errorCode: settlement.errorReason || 'settlement_failed' });
+        if (status === 'pending') return errorResponse(503, 'settlement_indeterminate', {
+          paymentHash, ...(validBase58Bytes(settlement.transaction, 64) ? { transaction: settlement.transaction } : {}),
+          retry: 'Do not create another payment authorization; reconcile this payment.',
+        });
         return instructionsResponse(settlement.response);
       }
       if (!validBase58Bytes(settlement.transaction, 64) ||
