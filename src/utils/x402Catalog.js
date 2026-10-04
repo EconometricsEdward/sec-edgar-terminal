@@ -22,7 +22,7 @@ export const X402_RESOURCES = [
     includes: ['Selected company histories on one reporting basis', 'Metric definitions, reporting dates and source references', 'Flat metric-period CSV for spreadsheets and data pipelines'],
     formats: ['json', 'csv'], limits: '1–10 unique tickers; response up to 4 MiB.',
     parameters: [{ name: 'tickers', in: 'query', values: ['1–10 comma-separated tickers'], default: 'required' }, { name: 'basis', in: 'query', values: ['annual', 'quarter', 'ytd', 'ttm'], default: 'annual' }, { name: 'format', in: 'query', values: ['json', 'csv'], default: 'json' }],
-    example: '/api/x402/v1/financial-batch?tickers=AAPL,MSFT&basis=annual',
+    example: '/api/x402/v1/financial-batch?tickers=AAPL%2CMSFT&basis=annual',
     limitations: 'All selected companies must have usable prepared coverage. History varies by company; latest-filed values are not an as-filed archive. Unavailable or oversized bundles are not settled.',
   },
   {
