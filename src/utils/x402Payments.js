@@ -17,7 +17,7 @@ const BASE_HEADERS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, OPTIONS',
   'Access-Control-Allow-Headers': 'Accept, Content-Type, PAYMENT-SIGNATURE, X-X402-Recovery-Token',
-  'Access-Control-Expose-Headers': 'PAYMENT-REQUIRED, PAYMENT-RESPONSE, EXTENSION-RESPONSES, X-Content-SHA256, X-X402-Price, X-Data-Stale, X-X402-Recovery-Until, X-X402-Recovered, Link, Retry-After',
+  'Access-Control-Expose-Headers': 'PAYMENT-REQUIRED, PAYMENT-RESPONSE, EXTENSION-RESPONSES, X-Content-SHA256, X-X402-Price, X-Data-Stale, X-Schema-Version, X-X402-Recovery-Until, X-X402-Recovered, Link, Retry-After',
   'X-Content-Type-Options': 'nosniff',
 };
 

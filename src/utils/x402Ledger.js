@@ -106,7 +106,7 @@ export function createX402Ledger({ env = process.env, fetchImpl = (...args) => f
     if (!Buffer.isBuffer(bytes) || !bytes.length || bytes.length > X402_LIMITS.deliveryBytes) throw new X402LedgerError('invalid_delivery', 422);
     const safeHeaders = {};
     const responseHeaders = new Headers(headers);
-    for (const name of ['content-type', 'content-disposition', 'x-data-stale', 'link']) {
+    for (const name of ['content-type', 'content-disposition', 'x-data-stale', 'x-schema-version', 'link']) {
       if (responseHeaders.has(name)) safeHeaders[name] = responseHeaders.get(name);
     }
     const compressed = await gzipAsync(bytes);

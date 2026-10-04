@@ -118,8 +118,8 @@ export const X402_DISCOVERY_DESCRIPTORS = Object.freeze({
   'credit-screen': {
     routePattern: '/api/x402/v1/credit-screen', tags: ['finance', 'SEC', 'credit-research', 'debt-maturities', 'csv'],
     input: { limit: 100, offset: 0 },
-    inputSchema: strictQuery({ sector, minDebt: { ...numericBound, minimum: 0, description: 'Minimum reported next-12-month debt in USD.' },
-      maxCashCoverage: { ...numericBound, minimum: 0, description: 'Maximum cash divided by next-12-month debt ratio.' }, minInterestCoverage: numericBound,
+    inputSchema: strictQuery({ sector, minDebt: { ...numericBound, minimum: 0, description: 'Minimum reported principal in the first maturity bucket (next fiscal year or rolling twelve months), in USD.' },
+      maxCashCoverage: { ...numericBound, minimum: 0, description: 'Maximum cash divided by principal in the first maturity bucket (next fiscal year or rolling twelve months).' }, minInterestCoverage: numericBound,
       coverage: { type: 'string', enum: ['reported', 'complete'], default: 'reported' },
       sort: { type: 'string', enum: ['next12m', 'cashToNext12m', 'interestCoverage', 'ticker'], default: 'next12m' },
       order: { type: 'string', enum: ['desc', 'asc'], default: 'desc' }, ...pageProperties, format: exportFormat }),

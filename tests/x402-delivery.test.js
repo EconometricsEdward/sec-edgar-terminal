@@ -57,6 +57,7 @@ test('exact bytes survive storage and response loss; recovery has no second paym
     const bytes = Buffer.from('ticker,company,value\r\nAAPL,"Example, Inc.",42\r\n');
     const staged = await ledger.stageDelivery({ token, recoveryHash, bytes, status: 200,
       headers: { 'content-type': 'text/csv; charset=utf-8', 'content-disposition': 'attachment; filename="factors.csv"',
+        'x-schema-version': 'edgar.paid-fundamental-screen.v1',
         'set-cookie': 'never-store-cookie', 'payment-signature': 'never-store-proof' } });
     assert.ok(Date.parse(staged.expiresAt) > Date.now() + 23 * 3600000);
     const pending = await ledger.recoverDelivery(recoveryHash);
@@ -70,6 +71,7 @@ test('exact bytes survive storage and response loss; recovery has no second paym
       assert.equal(response.headers.get('X-Content-SHA256'), sha(bytes));
       assert.equal(response.headers.get('X-X402-Recovered'), '1');
       assert.equal(response.headers.get('content-disposition'), 'attachment; filename="factors.csv"');
+      assert.equal(response.headers.get('x-schema-version'), 'edgar.paid-fundamental-screen.v1');
       assert.equal(response.headers.get('set-cookie'), null);
       const receipt = JSON.parse(Buffer.from(response.headers.get('PAYMENT-RESPONSE'), 'base64').toString('utf8'));
       assert.equal(receipt.success, true); assert.equal(receipt.transaction, transaction);

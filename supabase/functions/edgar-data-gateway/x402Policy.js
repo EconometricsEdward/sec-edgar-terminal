@@ -48,7 +48,7 @@ export function validX402Delivery(delivery) {
     || !Number.isSafeInteger(delivery.status) || delivery.status < 200 || delivery.status > 299 || delivery.status === 204
     || typeof delivery.gzipBase64 !== 'string' || delivery.gzipBase64.length > Math.ceil((X402_LIMITS.deliveryBytes + 65536) / 3) * 4
     || !/^H4sI[A-Za-z0-9+/]*={0,2}$/.test(delivery.gzipBase64) || delivery.gzipBase64.length % 4 !== 0
-    || !keys(delivery.headers, ['content-type', 'content-disposition', 'x-data-stale', 'link'])
+    || !keys(delivery.headers, ['content-type', 'content-disposition', 'x-data-stale', 'x-schema-version', 'link'])
     || !['application/json', 'text/csv'].includes(delivery.headers['content-type']?.split(';', 1)[0].trim())
     || Object.values(delivery.headers).some(value => typeof value !== 'string' || value.length > 2048 || /[\u0000-\u001f\u007f]/.test(value))) return false;
   return true;

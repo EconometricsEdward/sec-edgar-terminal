@@ -19,6 +19,9 @@ create table edgar_private.x402_deliveries (
 alter table edgar_private.x402_deliveries enable row level security;
 revoke all on edgar_private.x402_deliveries from public,anon,authenticated;
 grant select,insert,delete on edgar_private.x402_deliveries to service_role;
+-- Row-locking during bounded cleanup requires UPDATE on at least one column.
+-- Response bytes/headers stay immutable to this role as well as the RPC.
+grant update(expires_at) on edgar_private.x402_deliveries to service_role;
 create index x402_deliveries_expiry on edgar_private.x402_deliveries(expires_at);
 
 create function public.edgar_x402_stage_delivery(p_namespace text,p_claim jsonb,p_delivery jsonb)
@@ -42,7 +45,7 @@ begin
     or not coalesce(p_delivery->>'gzipBase64' ~ '^H4sI[A-Za-z0-9+/]*={0,2}$',false)
     or length(p_delivery->>'gzipBase64') > 5680000 or length(p_delivery->>'gzipBase64') % 4 <> 0
     or not coalesce(jsonb_typeof(p_delivery->'headers')='object',false)
-    or (p_delivery->'headers') - array['content-type','content-disposition','x-data-stale','link'] <> '{}'::jsonb
+    or (p_delivery->'headers') - array['content-type','content-disposition','x-data-stale','x-schema-version','link'] <> '{}'::jsonb
     or not coalesce(btrim(split_part(p_delivery->'headers'->>'content-type',';',1)) in ('application/json','text/csv'),false)
     then raise exception using errcode='22023',message='invalid_x402_delivery'; end if;
   if (p_delivery->>'rawBytes')::integer > 4194304
