@@ -15,9 +15,13 @@ test('all discovery declarations validate through the genuine SDK after transpor
   for (const resource of X402_RESOURCES) {
     const options = x402DiscoveryOptions(resource.id);
     const path = new URL(resource.example, 'https://secedgarterminal.com').pathname;
-    const extension = bazaarResourceServerExtension.enrichDeclaration(options.extensions.bazaar, {
+    let extension = bazaarResourceServerExtension.enrichDeclaration(options.extensions.bazaar, {
       method: 'GET', routePattern: options.routePattern, adapter: { getPath: () => path },
     });
+    if (options.omitDiscoveryRouteTemplate) {
+      const { routeTemplate: _routeTemplate, ...concrete } = extension;
+      extension = concrete;
+    }
     assert.deepEqual(validateDiscoveryExtensionSpec(extension), { valid: true });
     assert.deepEqual(validateDiscoveryExtension(extension), { valid: true });
     assert.equal(extension.info.input.method, 'GET');
@@ -28,12 +32,14 @@ test('all discovery declarations validate through the genuine SDK after transpor
       serviceName: 'SEC EDGAR Terminal', tags: options.tags, iconUrl: 'https://secedgarterminal.com/favicon.svg',
     });
     if (resource.id === 'financials') {
-      assert.equal(extension.routeTemplate, '/api/x402/v1/financials/:ticker');
+      assert.equal(options.routePattern, '/api/x402/v1/financials/:ticker');
+      assert.equal(options.omitDiscoveryRouteTemplate, true);
+      assert.equal(extension.routeTemplate, undefined);
       assert.deepEqual(extension.info.input.pathParams, { ticker: 'AAPL' });
       const extracted = extractDiscoveryInfo({
         x402Version: 2, resource: { url: `https://secedgarterminal.com${resource.example}`, ...options }, extensions: { bazaar: extension },
       }, {}, true);
-      assert.equal(extracted.resourceUrl, 'https://secedgarterminal.com/api/x402/v1/financials/:ticker');
+      assert.equal(extracted.resourceUrl, 'https://secedgarterminal.com/api/x402/v1/financials/AAPL');
       assert.equal(extracted.serviceName, 'SEC EDGAR Terminal');
     }
   }
@@ -78,11 +84,25 @@ test('free catalog publishes all three discovery contracts without claiming exte
   const catalog = buildX402Catalog({ status: 'active', price: '0.01', currency: 'USDC', network: X402_SOLANA_NETWORK, protocol: 'x402', version: 2 });
   assert.equal(catalog.discovery.extension, 'bazaar');
   assert.equal(catalog.discovery.catalogRegistration, 'facilitator-dependent');
+  assert.equal(catalog.discovery.indexing, 'concrete-path');
   assert.equal(catalog.resources.length, 3);
   for (const resource of catalog.resources) {
     assert.equal(resource.price, '0.01');
     assert.equal(resource.amount, '10000');
     assert.ok(resource.discovery.extensions.bazaar.schema);
+    const declaration = resource.discovery.extensions.bazaar;
+    assert.deepEqual(validateDiscoveryExtension(declaration), { valid: true });
+    assert.deepEqual(validateDiscoveryExtensionSpec(declaration), { valid: true });
+    assert.equal(declaration.info.input.method, 'GET');
+    if (resource.id === 'financials') {
+      assert.deepEqual(declaration.info.input.pathParams, { ticker: 'AAPL' });
+      const extracted = extractDiscoveryInfo({ x402Version: 2,
+        resource: { url: `https://secedgarterminal.com${resource.example}` }, extensions: { bazaar: declaration },
+      }, {}, true);
+      assert.equal(extracted.resourceUrl, 'https://secedgarterminal.com/api/x402/v1/financials/AAPL');
+    }
+    assert.equal(resource.discovery.indexing, 'concrete-path');
+    assert.equal(resource.discovery.routeTemplate, undefined);
     assert.equal(resource.discovery.listed, undefined);
   }
 });

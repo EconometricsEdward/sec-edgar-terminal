@@ -57,6 +57,9 @@ const strictQuery = properties => ({ type: 'object', properties, additionalPrope
 export const X402_DISCOVERY_DESCRIPTORS = Object.freeze({
   financials: {
     routePattern: '/api/x402/v1/financials/:ticker',
+    // Keep SDK path-parameter enrichment, but let facilitator probes target a
+    // concrete supported ticker rather than the literal template placeholder.
+    omitDiscoveryRouteTemplate: true,
     tags: ['finance', 'SEC', 'financial-statements', 'filing-evidence'],
     input: { basis: 'annual' },
     inputSchema: strictQuery({ basis: basis(['annual', 'quarter', 'ytd', 'ttm'], 'annual') }),
@@ -80,7 +83,7 @@ export const X402_DISCOVERY_DESCRIPTORS = Object.freeze({
 export function x402DiscoveryOptions(resourceId) {
   const descriptor = X402_DISCOVERY_DESCRIPTORS[resourceId];
   if (!descriptor) throw new Error('Unknown x402 discovery resource');
-  const { routePattern, tags, ...declaration } = structuredClone(descriptor);
+  const { routePattern, tags, omitDiscoveryRouteTemplate, ...declaration } = structuredClone(descriptor);
   const extensions = declareDiscoveryExtension(declaration);
   // The helper only retains an output schema alongside a sample. Publish a
   // schema-only output declaration instead of fabricating a financial record.
@@ -94,5 +97,5 @@ export function x402DiscoveryOptions(resourceId) {
     required: ['type'],
     additionalProperties: false,
   };
-  return { ...X402_SERVICE_METADATA, tags, routePattern, extensions };
+  return { ...X402_SERVICE_METADATA, tags, routePattern, ...(omitDiscoveryRouteTemplate ? { omitDiscoveryRouteTemplate: true } : {}), extensions };
 }

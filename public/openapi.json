@@ -461,10 +461,11 @@
           "extension": "bazaar",
           "serviceName": "SEC EDGAR Terminal",
           "iconUrl": "https://secedgarterminal.com/favicon.svg",
-          "routeTemplate": "/api/x402/v1/financials/:ticker",
+          "indexing": "concrete-path",
+          "resourceExample": "https://secedgarterminal.com/api/x402/v1/financials/AAPL",
           "tags": ["finance", "SEC", "financial-statements", "filing-evidence"],
           "catalog": "https://secedgarterminal.com/api/x402",
-          "description": "Offers include input/path and schema-only output metadata. The payment resource stays the exact concrete request URL. External listing is facilitator-dependent and is not asserted by this document."
+          "description": "Offers include input/path and schema-only output metadata. Discovery indexes concrete paths; financials entries can represent specific supported tickers. The payment resource stays the exact concrete request URL. External listing is facilitator-dependent and is not asserted by this document."
         },
         "parameters": [
           {
@@ -566,10 +567,11 @@
           "extension": "bazaar",
           "serviceName": "SEC EDGAR Terminal",
           "iconUrl": "https://secedgarterminal.com/favicon.svg",
-          "routeTemplate": "/api/x402/v1/refinancing",
+          "indexing": "concrete-path",
+          "resourceExample": "https://secedgarterminal.com/api/x402/v1/refinancing",
           "tags": ["finance", "SEC", "refinancing", "debt-maturities"],
           "catalog": "https://secedgarterminal.com/api/x402",
-          "description": "Offers include input/path and schema-only output metadata. The payment resource stays the exact concrete request URL. External listing is facilitator-dependent and is not asserted by this document."
+          "description": "Offers include input/path and schema-only output metadata. Discovery indexes concrete paths; financials entries can represent specific supported tickers. The payment resource stays the exact concrete request URL. External listing is facilitator-dependent and is not asserted by this document."
         },
         "parameters": [
           {
@@ -680,10 +682,11 @@
           "extension": "bazaar",
           "serviceName": "SEC EDGAR Terminal",
           "iconUrl": "https://secedgarterminal.com/favicon.svg",
-          "routeTemplate": "/api/x402/v1/factor-universe",
+          "indexing": "concrete-path",
+          "resourceExample": "https://secedgarterminal.com/api/x402/v1/factor-universe",
           "tags": ["finance", "SEC", "fundamentals", "sector-analysis"],
           "catalog": "https://secedgarterminal.com/api/x402",
-          "description": "Offers include input/path and schema-only output metadata. The payment resource stays the exact concrete request URL. External listing is facilitator-dependent and is not asserted by this document."
+          "description": "Offers include input/path and schema-only output metadata. Discovery indexes concrete paths; financials entries can represent specific supported tickers. The payment resource stays the exact concrete request URL. External listing is facilitator-dependent and is not asserted by this document."
         },
         "parameters": [
           {
@@ -1338,6 +1341,7 @@
             "properties": {
               "extension": { "type": "string", "const": "bazaar" },
               "metadata": { "type": "string", "const": "enabled" },
+              "indexing": { "type": "string", "const": "concrete-path" },
               "catalogRegistration": { "type": "string", "const": "facilitator-dependent" }
             },
             "description": "Server discovery capability, not proof of external listing. Each resource carries its declaration and service metadata.",

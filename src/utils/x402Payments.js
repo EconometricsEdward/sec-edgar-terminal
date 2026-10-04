@@ -330,9 +330,19 @@ export function createPaidHandler(handler, options = {}) {
           import('@x402/extensions/bazaar'),
         ]);
         const facilitator = options.facilitatorClient || await createX402FacilitatorClient(config);
+        const discoveryExtension = options.omitDiscoveryRouteTemplate ? {
+          ...bazaarResourceServerExtension,
+          enrichDeclaration(declaration, context) {
+            // Keep genuine method/path parameter enrichment while indexing the
+            // concrete, probeable endpoint instead of a literal route template.
+            const enriched = { ...bazaarResourceServerExtension.enrichDeclaration(declaration, context) };
+            delete enriched.routeTemplate;
+            return enriched;
+          },
+        } : bazaarResourceServerExtension;
         const resourceServer = new x402ResourceServer(preserveSettlementOutcome(facilitator, SettleError))
           .register(config.network, new ExactSvmScheme())
-          .registerExtension(bazaarResourceServerExtension);
+          .registerExtension(discoveryExtension);
         await resourceServer.initialize();
         return { resourceServer, x402HTTPResourceServer };
       })();

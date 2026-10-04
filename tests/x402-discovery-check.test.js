@@ -6,15 +6,15 @@ import { TOKEN_PROGRAM_ADDRESS } from '@solana-program/token';
 import { encodePaymentRequiredHeader } from '@x402/core/http';
 import { x402DiscoveryOptions } from '../src/utils/x402Discovery.js';
 import { X402_DEPLOYMENT_PAY_TO, X402_DEPLOYMENT_NETWORK } from '../src/utils/x402Deployment.js';
-import { checkDiscovery, createEphemeralPayloadBuilder, DISCOVERY_REQUESTS, guardedDiscoveryFetch } from '../scripts/check-x402-discovery.mjs';
+import { checkDiscovery, createEphemeralPayloadBuilder, DISCOVERY_REQUESTS, guardedDiscoveryFetch, loadLocalKeypairSigner, parseDiscoveryArgs } from '../scripts/check-x402-discovery.mjs';
 
 const FACILITATOR = 'https://facilitator.payai.network';
 const MINT = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
 const feePayer = await generateKeyPairSigner();
 const offers = DISCOVERY_REQUESTS.map((url, i) => {
-  const { routePattern, extensions, ...metadata } = x402DiscoveryOptions(['financials', 'factor-universe', 'refinancing'][i]);
+  const { extensions, ...metadata } = x402DiscoveryOptions(['financials', 'factor-universe', 'refinancing'][i]);
+  delete metadata.routePattern;
   extensions.bazaar.info.input.method = 'GET';
-  if (routePattern.includes(':ticker')) extensions.bazaar.routeTemplate = routePattern;
   return { x402Version: 2, resource: { url, description: 'Prepared SEC research', mimeType: 'application/json', ...metadata }, extensions,
     accepts: [{ scheme: 'exact', network: X402_DEPLOYMENT_NETWORK, asset: MINT, amount: '10000', payTo: X402_DEPLOYMENT_PAY_TO, maxTimeoutSeconds: 60, extra: { feePayer: feePayer.address } }],
   };
@@ -54,10 +54,52 @@ test('discovery audit is read-only by default and distinguishes valid offers fro
   assert.equal(mock.calls.length, 7);
   assert.ok(mock.calls.every(call => call.method === 'GET'));
   assert.equal(result.resources.length, 3);
-  assert.equal(result.resources[0].resource, 'https://secedgarterminal.com/api/x402/v1/financials/:ticker');
+  assert.equal(result.resources[0].resource, 'https://secedgarterminal.com/api/x402/v1/financials/AAPL');
   assert.equal(result.resources[1].resource, 'https://secedgarterminal.com/api/x402/v1/factor-universe');
   assert.ok(result.resources.every(resource => !resource.listing.listed));
   assert.equal(result.catalog.totalForWallet, 0);
+});
+
+test('local keypair mode requires an explicit registration flag and does not accept wallet environment values', async () => {
+  assert.deepEqual(parseDiscoveryArgs([]), { register: false, keypairPath: undefined });
+  assert.deepEqual(parseDiscoveryArgs(['--register', '--keypair', '/local/buyer.json']), { register: true, keypairPath: '/local/buyer.json' });
+  for (const args of [['--keypair', '/local/buyer.json'], ['--register', '--keypair'], ['--register', '--register'], ['--origin', 'https://example.com']]) assert.throws(() => parseDiscoveryArgs(args));
+  await assert.rejects(checkDiscovery({ keypairPath: '/local/buyer.json', fetchImpl: () => { throw new Error('Must not fetch or read keys'); } }), /requires explicit --register/);
+});
+
+test('local loader accepts only an explicitly selected synthetic standard keypair and sanitizes key errors', async () => {
+  const buyer = await generateKeyPairSigner(true);
+  const bytes = [
+    ...new Uint8Array(await crypto.subtle.exportKey('pkcs8', buyer.keyPair.privateKey)).slice(-32),
+    ...new Uint8Array(await crypto.subtle.exportKey('raw', buyer.keyPair.publicKey)),
+  ];
+  let reads = 0;
+  const loaded = await loadLocalKeypairSigner('/synthetic/buyer.json', { readFile: (path, encoding) => {
+    reads++; assert.equal(path, '/synthetic/buyer.json'); assert.equal(encoding, 'utf8'); return JSON.stringify(bytes);
+  } });
+  assert.equal(loaded.address, buyer.address);
+  assert.equal(reads, 1);
+  for (const source of ['secret-key-material', JSON.stringify(bytes.slice(1)), JSON.stringify([...bytes.slice(0, -1), 256])]) {
+    await assert.rejects(loadLocalKeypairSigner('/synthetic/buyer.json', { readFile: () => source }), error => {
+      assert.match(error.message, /exactly 64 integer bytes/);
+      assert.doesNotMatch(error.message, /secret-key-material|synthetic|256/);
+      return true;
+    });
+  }
+});
+
+test('an invalid unfunded verification without an extension response reports not queued and a concrete next step', async () => {
+  const mock = transport({ register: true });
+  const fetchImpl = async (url, init) => {
+    const response = await mock.fetch(url, init);
+    if (url === `${FACILITATOR}/verify`) response.headers.delete('EXTENSION-RESPONSES');
+    return response;
+  };
+  const createPayload = async offer => ({ x402Version: 2, resource: offer.resource, extensions: offer.extensions, accepted: offer.accepts[0], payload: { transaction: 'offline-only-verification-placeholder'.repeat(4) } });
+  const result = await checkDiscovery({ register: true, fetchImpl, createPayload });
+  assert.equal(result.mode, 'verify-only unfunded probe');
+  assert.ok(result.resources.every(resource => resource.registration.queued === false && resource.registration.outcome === 'not acknowledged as queued'));
+  assert.match(result.resources[0].registration.note, /--register --keypair/);
 });
 
 test('discovery transport rejects settlement, signed seller retries, credentials, redirects and arbitrary origins', async () => {

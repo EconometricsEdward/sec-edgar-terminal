@@ -9,7 +9,7 @@ import { ExactSvmScheme as ExactSvmClient } from '@x402/svm/exact/client';
 import { ExactSvmScheme as ExactSvmFacilitator } from '@x402/svm/exact/facilitator';
 import { FacilitatorResponseError, FacilitatorTimeoutError } from '@x402/core/server';
 import { SettleError } from '@x402/core/types';
-import { validateDiscoveryExtension, validateDiscoveryExtensionSpec } from '@x402/extensions/bazaar';
+import { extractDiscoveryInfo, validateDiscoveryExtension, validateDiscoveryExtensionSpec } from '@x402/extensions/bazaar';
 import { x402DiscoveryOptions, X402_OUTPUT_SCHEMAS } from '../src/utils/x402Discovery.js';
 import {
   createPaidHandler, createX402FacilitatorClient, createX402AttemptGate, getX402Config, getX402PublicConfiguration,
@@ -214,8 +214,10 @@ test('all three paid offers publish SDK-valid Bazaar schemas, service metadata a
     assert.deepEqual(extension.schema.properties.output.properties.example, X402_OUTPUT_SCHEMAS[id]);
     assert.equal(extension.info.output.example, undefined, 'schemas do not invent financial example data');
     if (id === 'financials') {
-      assert.equal(extension.routeTemplate, '/api/x402/v1/financials/:ticker');
+      assert.equal(extension.routeTemplate, undefined);
       assert.deepEqual(extension.info.input.pathParams, { ticker: 'MSFT' });
+      const indexed = extractDiscoveryInfo({ x402Version: 2, resource: required.resource, extensions: required.extensions }, required.accepts[0]);
+      assert.equal(indexed.resourceUrl, 'https://secedgarterminal.com/api/x402/v1/financials/MSFT');
     } else assert.equal(extension.routeTemplate, undefined);
     assert.equal(state.verifies + state.claims + state.reads + state.settles, 0);
   }

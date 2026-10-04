@@ -1,12 +1,14 @@
 #!/usr/bin/env node
 // Default: read-only offer/catalog audit. --register sends verify-only requests
-// from a fresh in-memory, unfunded signer; never settles or retries a seller.
+// from a fresh in-memory signer, or an explicitly selected local keypair.
+// Never settles, broadcasts or retries a seller with a signed payment.
+import { readFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 import { x402Client } from '@x402/core/client';
 import { decodePaymentRequiredHeader } from '@x402/core/http';
 import { ExactSvmScheme } from '@x402/svm/exact/client';
 import { extractDiscoveryInfo, validateDiscoveryExtension } from '@x402/extensions/bazaar';
-import { generateKeyPairSigner } from '@solana/kit';
+import { createKeyPairSignerFromBytes, generateKeyPairSigner } from '@solana/kit';
 import { X402_DEPLOYMENT_PAY_TO, X402_DEPLOYMENT_NETWORK } from '../src/utils/x402Deployment.js';
 
 const ORIGIN = 'https://secedgarterminal.com';
@@ -53,13 +55,36 @@ export function guardedDiscoveryFetch(fetchImpl, { register = false } = {}) {
   };
 }
 
-// No key files, private-key environment variables, broadcasts or signed retries.
-export async function createEphemeralPayloadBuilder({ rpcUrl = RPC_URL } = {}) {
-  const signer = await generateKeyPairSigner();
+/** Only called after an explicit --register --keypair selection on the buyer's machine. */
+export async function loadLocalKeypairSigner(keypairPath, { readFile = readFileSync } = {}) {
+  let bytes;
+  try {
+    if (typeof keypairPath !== 'string' || !keypairPath.trim()) throw new Error();
+    const source = readFile(keypairPath, 'utf8');
+    if (typeof source !== 'string' || source.length > 4096) throw new Error();
+    const parsed = JSON.parse(source);
+    if (!Array.isArray(parsed) || parsed.length !== 64 || !parsed.every(byte => Number.isInteger(byte) && byte >= 0 && byte <= 255)) throw new Error();
+    bytes = new Uint8Array(parsed);
+    return await createKeyPairSignerFromBytes(bytes);
+  } catch {
+    // Never include parsing errors, file contents or key bytes in output.
+    throw new Error('Unable to load local keypair: select a readable Solana JSON keypair containing exactly 64 integer bytes.');
+  } finally { bytes?.fill(0); }
+}
+
+function payloadBuilder(signer, rpcUrl) {
   const client = new x402Client();
   client.setSpendControls({ maxAmountPerPayment: '$0.01' });
   client.register(X402_DEPLOYMENT_NETWORK, new ExactSvmScheme(signer, { rpcUrl }));
   return offer => client.createPaymentPayload(offer);
+}
+
+export async function createEphemeralPayloadBuilder({ rpcUrl = RPC_URL } = {}) {
+  return payloadBuilder(await generateKeyPairSigner(), rpcUrl);
+}
+
+export async function createLocalPayloadBuilder(keypairPath, { rpcUrl = RPC_URL, readFile } = {}) {
+  return payloadBuilder(await loadLocalKeypairSigner(keypairPath, { readFile }), rpcUrl);
 }
 
 function decodeExtensionResponse(header) {
@@ -68,7 +93,8 @@ function decodeExtensionResponse(header) {
   catch { return { status: 'invalid-response-header' }; }
 }
 
-export async function checkDiscovery({ register = false, fetchImpl = fetch, createPayload } = {}) {
+export async function checkDiscovery({ register = false, keypairPath, fetchImpl = fetch, createPayload } = {}) {
+  if (keypairPath && !register) throw new Error('--keypair requires explicit --register; read-only mode never reads a keypair.');
   const request = guardedDiscoveryFetch(fetchImpl, { register });
   const offers = [];
   // Validate every live offer before generating a signer or sending /verify.
@@ -81,7 +107,7 @@ export async function checkDiscovery({ register = false, fetchImpl = fetch, crea
     const resource = validateOffer(offer, requestUrl);
     offers.push({ requestUrl, resource, offer });
   }
-  const buildPayload = register ? (createPayload || await createEphemeralPayloadBuilder()) : null;
+  const buildPayload = register ? (createPayload || (keypairPath ? await createLocalPayloadBuilder(keypairPath) : await createEphemeralPayloadBuilder())) : null;
   const resources = [];
   for (const { requestUrl, resource, offer } of offers) {
     let registration;
@@ -92,7 +118,14 @@ export async function checkDiscovery({ register = false, fetchImpl = fetch, crea
         body: JSON.stringify({ x402Version: 2, paymentPayload, paymentRequirements: paymentPayload.accepted }),
       });
       const verification = await response.json();
-      registration = { httpStatus: response.status, isValid: verification.isValid, invalidReason: verification.invalidReason, extension: decodeExtensionResponse(response.headers.get('EXTENSION-RESPONSES')) };
+      const extension = decodeExtensionResponse(response.headers.get('EXTENSION-RESPONSES'));
+      const queued = extension.status === 'processing';
+      registration = { httpStatus: response.status, isValid: verification.isValid, invalidReason: verification.invalidReason, extension, queued,
+        outcome: queued ? 'queued; admission not yet confirmed' : 'not acknowledged as queued',
+        ...(!queued ? { note: keypairPath
+          ? 'The facilitator did not acknowledge discovery. Check verification and extension results; no listing is confirmed.'
+          : 'The unfunded probe did not queue discovery. A buyer wallet with Solana USDC is needed for successful verification. Run locally with --register --keypair <buyer-keypair.json>, or complete a real buyer purchase. This script never settles.' } : {}),
+      };
     }
     const statusResponse = await request(`${FACILITATOR}/discovery/listing-status?resource=${encodeURIComponent(resource)}`);
     const status = await statusResponse.json();
@@ -107,16 +140,29 @@ export async function checkDiscovery({ register = false, fetchImpl = fetch, crea
     termsMatch: item.accepts?.some(accept => Object.entries(TERMS).every(([key, value]) => accept[key] === value)) === true,
     declarationValid: validateDiscoveryExtension(item.extensions?.bazaar || {}).valid,
   }));
-  return { mode: register ? 'verify-only registration' : 'read-only', fundsMoved: false, resources, catalog: { httpStatus: catalogResponse.status, totalForWallet: catalog.pagination?.total, matching: listings } };
+  return { mode: register ? (keypairPath ? 'verify-only local-keypair attempt' : 'verify-only unfunded probe') : 'read-only', fundsMoved: false, resources, catalog: { httpStatus: catalogResponse.status, totalForWallet: catalog.pagination?.total, matching: listings } };
+}
+
+export function parseDiscoveryArgs(args) {
+  let register = false;
+  let keypairPath;
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] === '--register' && !register) register = true;
+    else if (args[i] === '--keypair' && keypairPath === undefined && args[i + 1] && !args[i + 1].startsWith('--')) keypairPath = args[++i];
+    else throw new Error('Invalid discovery arguments');
+  }
+  if (keypairPath && !register) throw new Error('--keypair requires --register');
+  return { register, keypairPath };
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  const args = process.argv.slice(2);
-  if (args.some(arg => arg !== '--register') || args.length > 1) {
-    console.error('Usage: node scripts/check-x402-discovery.mjs [--register]');
+  try {
+    const options = parseDiscoveryArgs(process.argv.slice(2));
+    console.log(JSON.stringify(await checkDiscovery(options), null, 2));
+  } catch (error) {
+    console.error(error.message);
+    console.error('Usage: node scripts/check-x402-discovery.mjs [--register [--keypair /local/path/buyer-keypair.json]]');
+    console.error('Default is read-only. --register alone is an unfunded probe. --keypair is for local buyer verification with Solana USDC; it sends metadata to /verify, never settles or moves funds.');
     process.exitCode = 1;
-  } else {
-    try { console.log(JSON.stringify(await checkDiscovery({ register: args.includes('--register') }), null, 2)); }
-    catch (error) { console.error(error.message); process.exitCode = 1; }
   }
 }

@@ -1,3 +1,6 @@
+import { bazaarResourceServerExtension } from '@x402/extensions/bazaar';
+import { x402DiscoveryOptions, X402_SERVICE_METADATA } from './x402Discovery.js';
+
 export const X402_DOCUMENTATION_URL = 'https://secedgarterminal.com/data-access';
 export const X402_DISCOVERY_VERSION = 'edgar.x402-catalog.v1';
 const SOLANA_MAINNET = 'solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp';
@@ -57,17 +60,25 @@ export function buildX402Catalog(configuration) {
     discovery: {
       extension: 'bazaar',
       metadata: 'enabled',
+      indexing: 'concrete-path',
       catalogRegistration: 'facilitator-dependent',
       documentation: 'https://docs.x402.org/extensions/bazaar',
       ...X402_SERVICE_METADATA,
       note: 'Paid offers publish discovery metadata. External directory listing, indexing and demand depend on participating facilitators; this catalog does not assert listing status.',
     },
     resources: X402_RESOURCES.map(resource => {
-      const { routePattern, ...discovery } = x402DiscoveryOptions(resource.id);
+      const { routePattern, omitDiscoveryRouteTemplate, extensions, ...metadata } = x402DiscoveryOptions(resource.id);
+      const path = new URL(resource.example, 'https://secedgarterminal.com').pathname;
+      let declaration = bazaarResourceServerExtension.enrichDeclaration(extensions.bazaar, {
+        method: 'GET', routePattern, adapter: { getPath: () => path },
+      });
+      if (omitDiscoveryRouteTemplate) {
+        const { routeTemplate: _routeTemplate, ...concrete } = declaration;
+        declaration = concrete;
+      }
       return { ...resource, price: configuration.price, currency: configuration.currency, network: configuration.network, ...token,
-        discovery: { routeTemplate: routePattern, ...discovery },
+        discovery: { indexing: 'concrete-path', ...metadata, extensions: { ...extensions, bazaar: declaration } },
       };
     }),
   };
 }
-import { x402DiscoveryOptions, X402_SERVICE_METADATA } from './x402Discovery.js';
