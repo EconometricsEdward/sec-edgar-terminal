@@ -1,9 +1,9 @@
 {
   "openapi": "3.1.0",
   "info": {
-    "title": "EDGAR Terminal Public Research APIs",
-    "version": "2.0.0",
-    "description": "Read-only company financial highlights, SEC fundamental universe, prepared N-PORT and Form 13F summaries, and official CFTC Commitments of Traders data. CFTC positioning is separate market context and is not an equity-price feed or trade signal."
+    "title": "EDGAR Terminal Research and x402 Data APIs",
+    "version": "2.1.0",
+    "description": "Read-only company financial highlights, SEC fundamental universe, prepared N-PORT and Form 13F summaries, and official CFTC Commitments of Traders data. CFTC positioning is separate market context and is not an equity-price feed or trade signal. Dedicated x402 v2 endpoints deliver prepared machine-readable research for 0.01 USDC on Base per successfully settled GET. Public pages, public API previews and discovery documents remain free. Payments may require activation; consult /api/x402."
   },
   "servers": [{ "url": "https://secedgarterminal.com" }],
   "tags": [
@@ -412,6 +412,279 @@
         "summary": "Retired mixed-data factor-universe v1 endpoint",
         "responses": { "410": { "$ref": "#/components/responses/Retired" } }
       }
+    },
+    "/api/x402": {
+      "get": {
+        "tags": [
+          "Paid data discovery"
+        ],
+        "summary": "Discover paid resources, pricing and current activation status",
+        "description": "Free catalog. No payment authorization or API key is required. An active catalog does not guarantee that every dataset is prepared.",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Paid resource catalog",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/X402Catalog"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/x402/v1/financials/{ticker}": {
+      "get": {
+        "tags": [
+          "Paid x402 data"
+        ],
+        "summary": "Retrieve prepared company financial history",
+        "description": "Financial reporting periods, units and source evidence use the same prepared calculator model as the research application. As-filed historical vintages are not guaranteed. Price is 0.01 USDC on Base mainnet per successfully settled GET. Public research remains free. No source acquisition is initiated by this request. Inspect the 402 offer before authorizing payment.",
+        "security": [
+          {
+            "X402Payment": []
+          }
+        ],
+        "x-x402": {
+          "version": 2,
+          "scheme": "exact",
+          "price": "0.01",
+          "currency": "USDC",
+          "network": "eip155:8453"
+        },
+        "parameters": [
+          {
+            "name": "ticker",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Supported public company ticker."
+          },
+          {
+            "name": "basis",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "annual",
+                "quarter",
+                "ytd",
+                "ttm"
+              ],
+              "default": "annual"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Prepared data delivered after successful verification and settlement. May include explicitly labeled incomplete or stale source coverage.",
+            "headers": {
+              "PAYMENT-RESPONSE": {
+                "$ref": "#/components/headers/PaymentResponse"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaidFinancials"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "402": {
+            "$ref": "#/components/responses/X402PaymentRequired"
+          },
+          "409": {
+            "$ref": "#/components/responses/X402Conflict"
+          },
+          "503": {
+            "$ref": "#/components/responses/X402Unavailable"
+          }
+        }
+      }
+    },
+    "/api/x402/v1/refinancing": {
+      "get": {
+        "tags": [
+          "Paid x402 data"
+        ],
+        "summary": "Retrieve one page of the refinancing snapshot",
+        "description": "Response includes metadata, company records and pagination. Pin the snapshot across pages to avoid mixing versions. Unsupported query fields are rejected. Price is 0.01 USDC on Base mainnet per successfully settled GET. Public research remains free. No source acquisition is initiated by this request. Inspect the 402 offer before authorizing payment.",
+        "security": [
+          {
+            "X402Payment": []
+          }
+        ],
+        "x-x402": {
+          "version": 2,
+          "scheme": "exact",
+          "price": "0.01",
+          "currency": "USDC",
+          "network": "eip155:8453"
+        },
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 100
+            },
+            "description": "Each successful page is a separate 0.01 USDC paid request."
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9999,
+              "default": 0
+            }
+          },
+          {
+            "name": "snapshot",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            },
+            "description": "Pass the exact token returned in pagination.snapshot on every page after the first. A changed snapshot returns 409 without settlement."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Prepared data delivered after successful verification and settlement. May include explicitly labeled incomplete or stale source coverage.",
+            "headers": {
+              "PAYMENT-RESPONSE": {
+                "$ref": "#/components/headers/PaymentResponse"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaidRefinancingPage"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "402": {
+            "$ref": "#/components/responses/X402PaymentRequired"
+          },
+          "409": {
+            "$ref": "#/components/responses/X402Conflict"
+          },
+          "503": {
+            "$ref": "#/components/responses/X402Unavailable"
+          }
+        }
+      }
+    },
+    "/api/x402/v1/factor-universe": {
+      "get": {
+        "tags": [
+          "Paid x402 data"
+        ],
+        "summary": "Retrieve one page of the SEC fundamental universe",
+        "description": "Response includes snapshot metadata, company rows and pagination. Only retained prepared snapshots are accepted; a computed fallback returns 503 without settlement. Accounting measures do not represent security-price returns. Pin the snapshot across pages. Unsupported query fields are rejected. Price is 0.01 USDC on Base mainnet per successfully settled GET. Public research remains free. No source acquisition is initiated by this request. Inspect the 402 offer before authorizing payment.",
+        "security": [
+          {
+            "X402Payment": []
+          }
+        ],
+        "x-x402": {
+          "version": 2,
+          "scheme": "exact",
+          "price": "0.01",
+          "currency": "USDC",
+          "network": "eip155:8453"
+        },
+        "parameters": [
+          {
+            "name": "basis",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "ttm",
+                "annual"
+              ],
+              "default": "ttm"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 100
+            },
+            "description": "Each successful page is a separate 0.01 USDC paid request."
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9999,
+              "default": 0
+            }
+          },
+          {
+            "name": "snapshot",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            },
+            "description": "Pass the exact token returned in pagination.snapshot on every page after the first. A changed snapshot returns 409 without settlement."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Prepared data delivered after successful verification and settlement. May include explicitly labeled incomplete or stale source coverage.",
+            "headers": {
+              "PAYMENT-RESPONSE": {
+                "$ref": "#/components/headers/PaymentResponse"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaidFactorPage"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "402": {
+            "$ref": "#/components/responses/X402PaymentRequired"
+          },
+          "409": {
+            "$ref": "#/components/responses/X402Conflict"
+          },
+          "503": {
+            "$ref": "#/components/responses/X402Unavailable"
+          }
+        }
+      }
     }
   },
   "components": {
@@ -425,7 +698,19 @@
       "RateLimit": { "schema": { "type": "integer", "minimum": 0 } },
       "RateRemaining": { "schema": { "type": "integer", "minimum": 0 } },
       "RateReset": { "schema": { "type": "integer", "minimum": 1 } },
-      "SchemaLink": { "schema": { "type": "string" } }
+      "SchemaLink": { "schema": { "type": "string" } },
+      "PaymentRequired": {
+        "description": "Base64-encoded x402 protocol v2 payment requirements. Inspect amount, asset, network, recipient and resource before signing.",
+        "schema": {
+          "type": "string"
+        }
+      },
+      "PaymentResponse": {
+        "description": "Base64-encoded x402 settlement receipt for this paid response. Keep the transaction identifier for support.",
+        "schema": {
+          "type": "string"
+        }
+      }
     },
     "schemas": {
       "PublicAnalysisSummary": {
@@ -770,6 +1055,277 @@
           "replacement": { "type": ["string", "null"] },
           "documentation": { "type": "string" }
         }
+      },
+      "PaidPagination": {
+        "type": "object",
+        "required": [
+          "offset",
+          "limit",
+          "total",
+          "nextOffset",
+          "snapshot"
+        ],
+        "properties": {
+          "offset": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9999
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
+          },
+          "total": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "nextOffset": {
+            "type": ["integer", "null"]
+          },
+          "snapshot": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$",
+            "description": "SHA-256 token identifying the complete prepared snapshot. Pin it on later page requests."
+          }
+        },
+        "additionalProperties": true
+      },
+      "PaidFactorPage": {
+        "type": "object",
+        "required": [
+          "schemaVersion",
+          "snapshot",
+          "rows",
+          "pagination"
+        ],
+        "properties": {
+          "schemaVersion": {
+            "type": "string",
+            "enum": [
+              "edgar.paid-factor-page.v1"
+            ]
+          },
+          "snapshot": {
+            "type": "object",
+            "additionalProperties": true,
+            "description": "Snapshot metadata without the full company collection; preserve coverage, dates, stale flags and methodology."
+          },
+          "rows": {
+            "type": "array",
+            "maxItems": 100,
+            "items": {
+              "type": "object",
+              "additionalProperties": true
+            }
+          },
+          "pagination": {
+            "$ref": "#/components/schemas/PaidPagination"
+          }
+        },
+        "additionalProperties": true
+      },
+      "PaidRefinancingPage": {
+        "type": "object",
+        "required": [
+          "schemaVersion",
+          "snapshot",
+          "companies",
+          "pagination"
+        ],
+        "properties": {
+          "schemaVersion": {
+            "type": "string",
+            "enum": [
+              "edgar.paid-refinancing-page.v1"
+            ]
+          },
+          "snapshot": {
+            "type": "object",
+            "additionalProperties": true,
+            "description": "Snapshot metadata without the full company collection; preserve coverage, dates, stale flags and methodology."
+          },
+          "companies": {
+            "type": "array",
+            "maxItems": 100,
+            "items": {
+              "type": "object",
+              "additionalProperties": true
+            }
+          },
+          "pagination": {
+            "$ref": "#/components/schemas/PaidPagination"
+          }
+        },
+        "additionalProperties": true
+      },
+      "X402Catalog": {
+        "type": "object",
+        "required": [
+          "schemaVersion",
+          "status",
+          "price",
+          "currency",
+          "network",
+          "protocol",
+          "version",
+          "resources"
+        ],
+        "properties": {
+          "schemaVersion": {
+            "type": "string",
+            "enum": [
+              "edgar.x402-catalog.v1"
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "active",
+              "configuration-required"
+            ]
+          },
+          "price": {
+            "type": "string",
+            "enum": [
+              "0.01"
+            ]
+          },
+          "currency": {
+            "type": "string",
+            "enum": [
+              "USDC"
+            ]
+          },
+          "network": {
+            "type": "string",
+            "enum": [
+              "eip155:8453"
+            ]
+          },
+          "protocol": {
+            "type": "string",
+            "enum": [
+              "x402"
+            ]
+          },
+          "version": {
+            "type": "integer",
+            "enum": [
+              2
+            ]
+          },
+          "payTo": {
+            "type": "string",
+            "description": "Public settlement recipient when configured. No private key is returned."
+          },
+          "resources": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": true
+            }
+          }
+        },
+        "additionalProperties": true
+      },
+      "PaidFinancials": {
+        "type": "object",
+        "required": [
+          "schemaVersion",
+          "status",
+          "model",
+          "limitations"
+        ],
+        "properties": {
+          "schemaVersion": {
+            "type": "string",
+            "enum": [
+              "edgar.paid-financials.v1"
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "ready"
+            ]
+          },
+          "stale": {
+            "type": "boolean"
+          },
+          "fetchedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "checkedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "freshUntil": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "model": {
+            "type": "object",
+            "required": [
+              "packed",
+              "ticker",
+              "basis",
+              "periods"
+            ],
+            "properties": {
+              "packed": {
+                "type": "boolean",
+                "enum": [
+                  true
+                ]
+              },
+              "ticker": {
+                "type": "string"
+              },
+              "cik": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "basis": {
+                "type": "string",
+                "enum": [
+                  "annual",
+                  "quarter",
+                  "ytd",
+                  "ttm"
+                ]
+              },
+              "asOf": {
+                "type": "string",
+                "enum": [
+                  ""
+                ],
+                "description": "An as-filed cutoff is not supplied by this endpoint."
+              },
+              "periods": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              },
+              "sourceCatalog": {
+                "description": "Prepared source catalog; preserve units, periods and original evidence."
+              },
+              "calculationCatalog": {
+                "description": "Prepared calculation provenance."
+              }
+            },
+            "additionalProperties": true
+          },
+          "limitations": {
+            "description": "Explicit interpretation and coverage limitations."
+          }
+        },
+        "additionalProperties": true
       }
     },
     "responses": {
@@ -835,6 +1391,52 @@
             "schema": { "$ref": "#/components/schemas/Retired" }
           }
         }
+      },
+      "X402PaymentRequired": {
+        "description": "Valid paid resource requires payment authorization. Payment configuration is checked before a challenge is offered; source readiness is checked before settlement.",
+        "headers": {
+          "PAYMENT-REQUIRED": {
+            "$ref": "#/components/headers/PaymentRequired"
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "additionalProperties": true
+            }
+          }
+        }
+      },
+      "X402Unavailable": {
+        "description": "Payment configuration, settlement or prepared source data is unavailable. A pending or indeterminate settlement may have transferred funds. Keep receipt and transaction information, reconcile the original payment and do not automatically create a replacement authorization. Invalid or unavailable source responses are not settled.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "additionalProperties": true
+            }
+          }
+        }
+      },
+      "X402Conflict": {
+        "description": "Conflict: SNAPSHOT_CHANGED means the requested snapshot changed and this request is not settled; restart pagination. payment_already_used means an authorization was already claimed or used, with a status and possibly a transaction identifier. Pending or unknown settlement must be reconciled before another authorization; do not automatically sign a replacement payment.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "additionalProperties": true
+            }
+          }
+        }
+      }
+    },
+    "securitySchemes": {
+      "X402Payment": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "PAYMENT-SIGNATURE",
+        "description": "x402 v2 signed payment authorization, not a static API key. Obtain requirements from a 402 response, validate the offer and sign with a funded Base wallet."
       }
     }
   }

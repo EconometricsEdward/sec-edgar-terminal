@@ -78,7 +78,7 @@ test('cryptographic verifier accepts valid RS256 and rejects forged, wrong audie
 });
 
 test('only the explicitly reviewed RPC names are supported and namespace is forced', async () => {
-  assert.equal(Object.keys(RPC_PARAMETERS).length, 52);
+  assert.equal(Object.keys(RPC_PARAMETERS).length, 54);
   assert.equal(RPC_PARAMETERS.edgar_billing_operation, undefined);
   const { handler, calls } = setup();
   assert.equal((await handler(rpc('edgar_get_version', { p_dataset: 'sec', p_key: key }))).status, 200);

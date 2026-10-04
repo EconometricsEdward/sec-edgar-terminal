@@ -1,0 +1,415 @@
+import { createHash, createPrivateKey, randomUUID, sign } from 'node:crypto';
+
+export const X402_PRICE = '0.01';
+export const X402_AMOUNT = '10000';
+export const X402_BASE_NETWORK = 'eip155:8453';
+export const X402_BASE_USDC = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913';
+const TEST_NETWORK = 'eip155:84532';
+const TEST_USDC = '0x036CbD53842c5426634e7929541eC2318f3dCF7e';
+const MAX_BODY_BYTES = 4 * 1024 * 1024;
+const MAX_PAYMENT_HEADER_BYTES = 16384;
+const BASE_HEADERS = {
+  'Cache-Control': 'private, no-store, max-age=0',
+  'CDN-Cache-Control': 'no-store',
+  'Vercel-CDN-Cache-Control': 'no-store',
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'GET, OPTIONS',
+  'Access-Control-Allow-Headers': 'Accept, Content-Type, PAYMENT-SIGNATURE',
+  'Access-Control-Expose-Headers': 'PAYMENT-REQUIRED, PAYMENT-RESPONSE, X-Content-SHA256, Retry-After',
+  'X-Content-Type-Options': 'nosniff',
+};
+
+/** Public receiving address only. This server never needs the receiving wallet's key. */
+export function getX402Config(env = process.env) {
+  const payTo = String(env.X402_PAY_TO || '').trim();
+  const network = String(env.X402_NETWORK || X402_BASE_NETWORK).trim();
+  const disabled = /^(0|false|off)$/i.test(String(env.X402_ENABLED || ''));
+  let errorCode = disabled ? 'payments_disabled' : '';
+  if (env.VERCEL_ENV === 'preview') errorCode ||= 'preview_payments_disabled';
+  if (!/^0x[0-9a-fA-F]{40}$/.test(payTo) || /^0x0{40}$/i.test(payTo)) errorCode ||= 'receiving_wallet_required';
+  if (network !== X402_BASE_NETWORK && network !== TEST_NETWORK) errorCode ||= 'unsupported_network';
+  if (env.NODE_ENV === 'production' && network !== X402_BASE_NETWORK) errorCode ||= 'production_requires_base_mainnet';
+  const facilitatorUrl = String(env.X402_FACILITATOR_URL || 'https://facilitator.payai.network').replace(/\/+$/, '');
+  let facilitatorHostname = '';
+  try {
+    const url = new URL(facilitatorUrl);
+    facilitatorHostname = url.hostname;
+    if (url.protocol !== 'https:' || url.username || url.password || url.search || url.hash) errorCode ||= 'invalid_facilitator_url';
+  } catch { errorCode ||= 'invalid_facilitator_url'; }
+  const authKeyId = String(env.PAYAI_API_KEY_ID || env.X402_PAYAI_API_KEY_ID || '').trim();
+  const authKeySecret = String(env.PAYAI_API_KEY_SECRET || env.X402_PAYAI_API_KEY_SECRET || '').trim();
+  if (Boolean(authKeyId) !== Boolean(authKeySecret)) errorCode ||= 'incomplete_facilitator_credentials';
+  if (authKeyId && facilitatorHostname !== 'facilitator.payai.network') errorCode ||= 'unsupported_facilitator_credentials';
+  if (authKeySecret) {
+    try {
+      const key = createPrivateKey({ key: Buffer.from(authKeySecret.replace(/^payai_sk_/, ''), 'base64'), format: 'der', type: 'pkcs8' });
+      if (key.asymmetricKeyType !== 'ed25519') errorCode ||= 'invalid_facilitator_credentials';
+    } catch { errorCode ||= 'invalid_facilitator_credentials'; }
+  }
+  return {
+    ready: !errorCode,
+    errorCode,
+    payTo,
+    network,
+    asset: network === TEST_NETWORK ? TEST_USDC : X402_BASE_USDC,
+    price: X402_PRICE,
+    amount: X402_AMOUNT,
+    facilitatorUrl,
+    timeoutMs: 20000,
+    authKeyId,
+    authKeySecret,
+  };
+}
+
+export function getX402PublicConfiguration(env = process.env) {
+  const config = getX402Config(env);
+  return {
+    status: config.ready ? 'active' : 'configuration-required',
+    price: X402_PRICE,
+    currency: 'USDC',
+    network: config.network,
+    ...(config.ready ? { payTo: config.payTo } : {}),
+    protocol: 'x402',
+    version: 2,
+  };
+}
+
+export function x402ResponseHeaders(headers) {
+  const result = new Headers(headers);
+  for (const [key, value] of Object.entries(BASE_HEADERS)) result.set(key, value);
+  // Cached validators could disclose a protected representation without another purchase.
+  result.delete('ETag');
+  result.delete('Last-Modified');
+  return result;
+}
+
+export function x402OptionsResponse() {
+  return new Response(null, { status: 204, headers: x402ResponseHeaders() });
+}
+
+export function x402HeadResponse() {
+  return new Response(null, { status: 405, headers: x402ResponseHeaders({ Allow: 'GET, OPTIONS' }) });
+}
+
+function errorResponse(status, error, extra = {}) {
+  return Response.json({ error, ...extra }, { status, headers: x402ResponseHeaders() });
+}
+
+function stableJson(value) {
+  if (Array.isArray(value)) return `[${value.map(stableJson).join(',')}]`;
+  if (value && typeof value === 'object') return `{${Object.keys(value).sort().map(key => `${JSON.stringify(key)}:${stableJson(value[key])}`).join(',')}}`;
+  return JSON.stringify(value);
+}
+
+function hash(value) { return createHash('sha256').update(value).digest('hex'); }
+
+/**
+ * Local cost guard shared by all paid routes in one server process. Vercel may
+ * run several processes, so this supplements provider/WAF quotas, not a global
+ * financial cap. No Redis write or database reservation is made for bad proofs.
+ */
+export function createX402AttemptGate({ maxConcurrent = 6, maxAttempts = 60, windowMs = 60000, now = Date.now } = {}) {
+  for (const value of [maxConcurrent, maxAttempts, windowMs]) {
+    if (!Number.isSafeInteger(value) || value <= 0) throw new RangeError('Invalid payment attempt limit');
+  }
+  let windowStarted = now();
+  let attempts = 0;
+  let active = 0;
+  return Object.freeze({
+    acquire() {
+      const current = now();
+      if (current - windowStarted >= windowMs || current < windowStarted) {
+        windowStarted = current;
+        attempts = 0;
+      }
+      if (attempts >= maxAttempts) return { allowed: false, retryAfter: Math.max(1, Math.ceil((windowStarted + windowMs - current) / 1000)) };
+      if (active >= maxConcurrent) return { allowed: false, retryAfter: 1 };
+      attempts++;
+      active++;
+      let released = false;
+      return {
+        allowed: true,
+        release() { if (!released) { active--; released = true; } },
+      };
+    },
+  });
+}
+const sharedAttemptGate = createX402AttemptGate();
+
+function requestContext(request) {
+  const url = new URL(request.url);
+  const adapter = {
+    getHeader: name => request.headers.get(name) || undefined,
+    getMethod: () => request.method,
+    getPath: () => url.pathname,
+    getUrl: () => request.url,
+    // These endpoints always return JSON payment requirements, including browser clients.
+    getAcceptHeader: () => 'application/json',
+    getUserAgent: () => request.headers.get('user-agent') || '',
+    getQueryParams: () => Object.fromEntries(url.searchParams),
+    getQueryParam: name => url.searchParams.get(name) || undefined,
+  };
+  return { adapter, path: url.pathname, method: request.method };
+}
+
+function instructionsResponse(instructions) {
+  const body = instructions.isHtml ? instructions.body : JSON.stringify(instructions.body ?? {});
+  return new Response(body, { status: instructions.status, headers: x402ResponseHeaders(instructions.headers) });
+}
+
+/** PayAI requires short-lived Ed25519 JWTs, not an API-key secret sent as a bearer token. */
+function payaiAuth(config) {
+  if (!config.authKeyId) return undefined;
+  let cached;
+  return async () => {
+    const now = Math.floor(Date.now() / 1000);
+    if (!cached || cached.expires <= now + 30) {
+      const keyBytes = Buffer.from(config.authKeySecret.replace(/^payai_sk_/, ''), 'base64');
+      const key = createPrivateKey({ key: keyBytes, format: 'der', type: 'pkcs8' });
+      const header = Buffer.from(JSON.stringify({ alg: 'EdDSA', typ: 'JWT', kid: config.authKeyId })).toString('base64url');
+      const payload = Buffer.from(JSON.stringify({ sub: config.authKeyId, iss: 'payai-merchant', iat: now, exp: now + 120, jti: randomUUID() })).toString('base64url');
+      const message = `${header}.${payload}`;
+      const token = `${message}.${sign(null, Buffer.from(message), key).toString('base64url')}`;
+      cached = { token, expires: now + 120 };
+    }
+    const headers = { Authorization: `Bearer ${cached.token}` };
+    return { verify: headers, settle: headers, supported: headers };
+  };
+}
+
+/** No capability retries on a user request: one bounded read, with a short failure cooldown. */
+export async function createX402FacilitatorClient(config, fetchImpl = fetch) {
+  const [{ HTTPFacilitatorClient }, { z }] = await Promise.all([
+    import('@x402/core/server'), import('@x402/core/schemas'),
+  ]);
+  const createAuthHeaders = payaiAuth(config);
+  const client = new HTTPFacilitatorClient({ url: config.facilitatorUrl, timeoutMs: config.timeoutMs, createAuthHeaders });
+  const supportedSchema = z.object({
+    kinds: z.array(z.object({ x402Version: z.number(), scheme: z.string(), network: z.string(), extra: z.record(z.unknown()).nullish() })).max(1000),
+    extensions: z.array(z.string()).default([]),
+    signers: z.record(z.array(z.string())).default({}),
+  });
+  return {
+    verify: client.verify.bind(client),
+    settle: client.settle.bind(client),
+    async getSupported() {
+      const auth = createAuthHeaders ? await createAuthHeaders() : {};
+      const response = await fetchImpl(`${config.facilitatorUrl}/supported`, {
+        headers: auth.supported, cache: 'no-store', redirect: 'error',
+        signal: AbortSignal.timeout(Math.min(config.timeoutMs, 10000)),
+      });
+      if (!response.ok) { await response.body?.cancel(); throw new Error('Facilitator capabilities unavailable'); }
+      const chunks = [];
+      let total = 0;
+      const reader = response.body?.getReader();
+      if (reader) {
+        try {
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            total += value.byteLength;
+            if (total > 128 * 1024) throw new Error('Facilitator capabilities too large');
+            chunks.push(value);
+          }
+        } finally { await reader.cancel().catch(() => {}); }
+      }
+      return supportedSchema.parse(JSON.parse(Buffer.concat(chunks, total).toString('utf8')));
+    },
+  };
+}
+
+/**
+ * A GET purchase is one successful, bounded JSON resource. Verification precedes
+ * work; durable reservation precedes settlement; settlement precedes delivery.
+ * SDK/facilitator loading is lazy, so discovery and configuration pages stay cheap.
+ */
+export function createPaidHandler(handler, options = {}) {
+  let serverPromise;
+  let previousConfig;
+  let failedUntil = 0;
+  const getServer = async config => {
+    if (Date.now() < failedUntil) throw new Error('Facilitator initialization cooling down');
+    const key = stableJson(config);
+    if (!serverPromise || previousConfig !== key) {
+      previousConfig = key;
+      serverPromise = (async () => {
+        const [{ x402ResourceServer, x402HTTPResourceServer }, { ExactEvmScheme }] = await Promise.all([
+          import('@x402/core/server'), import('@x402/evm/exact/server'),
+        ]);
+        const facilitator = options.facilitatorClient || await createX402FacilitatorClient(config);
+        const resourceServer = new x402ResourceServer(facilitator).register(config.network, new ExactEvmScheme());
+        await resourceServer.initialize();
+        return { resourceServer, x402HTTPResourceServer };
+      })();
+      serverPromise.catch(() => { serverPromise = undefined; failedUntil = Date.now() + 30000; });
+    }
+    return serverPromise;
+  };
+
+  return async function paidGET(request, ...handlerArgs) {
+    if (request.method === 'OPTIONS') return x402OptionsResponse();
+    if (request.method !== 'GET') return x402HeadResponse();
+    if (request.url.length > 2048) return errorResponse(414, 'resource_url_too_long');
+    if ((request.headers.get('payment-signature') || '').length > MAX_PAYMENT_HEADER_BYTES) return errorResponse(431, 'payment_header_too_large');
+    try {
+      if (options.validate) {
+        const validation = await options.validate(request);
+        if (validation instanceof Response) return new Response(validation.body, { status: validation.status, headers: x402ResponseHeaders(validation.headers) });
+      }
+    } catch { return errorResponse(400, 'invalid_resource_request'); }
+    const config = options.config || getX402Config();
+    if (!config.ready) return errorResponse(503, 'payments_not_configured');
+    const ledger = options.ledger;
+    if (!ledger || typeof ledger.claim !== 'function' || typeof ledger.finish !== 'function') return errorResponse(503, 'payment_ledger_unavailable');
+    try {
+      if (typeof ledger.ready === 'function' && !(await ledger.ready())) return errorResponse(503, 'payment_ledger_unavailable');
+    } catch { return errorResponse(503, 'payment_ledger_unavailable'); }
+    const permit = request.headers.get('payment-signature')
+      ? (options.attemptGate || sharedAttemptGate).acquire() : undefined;
+    if (permit && !permit.allowed) {
+      const response = errorResponse(429, 'payment_attempt_limit');
+      response.headers.set('Retry-After', String(permit.retryAfter));
+      return response;
+    }
+    try {
+      let httpServer;
+      let result;
+      const context = requestContext(request);
+      try {
+        const { resourceServer, x402HTTPResourceServer } = await getServer(config);
+        // Use the exact current GET path, and assert it matches. No wildcard or
+        // Next keyed-route miss can bypass the payment boundary.
+        httpServer = new x402HTTPResourceServer(resourceServer, {
+          [`GET ${context.path}`]: {
+            accepts: {
+              scheme: 'exact', network: config.network, payTo: config.payTo,
+              price: { amount: X402_AMOUNT, asset: config.asset, extra: { name: 'USD Coin', version: '2' } },
+              maxTimeoutSeconds: 60,
+              extra: { assetTransferMethod: 'eip3009', paymentFlow: 'authorization' },
+            },
+            resource: request.url,
+            description: options.description || 'SEC EDGAR Terminal structured financial data',
+            mimeType: 'application/json',
+            unpaidResponseBody: () => ({ contentType: 'application/json', body: { error: 'payment_required', price: X402_PRICE, currency: 'USDC' } }),
+          },
+        });
+        if (!httpServer.requiresPayment(context)) return errorResponse(503, 'payment_route_mismatch');
+        result = await httpServer.processHTTPRequest(context);
+      } catch {
+        return errorResponse(503, 'payment_service_unavailable');
+      }
+      if (result.type === 'payment-error') return instructionsResponse(result.response);
+      if (result.type !== 'payment-verified') return errorResponse(503, 'payment_verification_required');
+      if (result.beforeHandlerSettlement) return errorResponse(503, 'unsupported_payment_flow');
+
+      const { paymentPayload, paymentRequirements } = result;
+      const authorization = paymentPayload.payload?.authorization;
+      if (paymentPayload.resource?.url !== request.url) return errorResponse(402, 'payment_resource_mismatch');
+      if (!authorization || !/^0x[0-9a-fA-F]{64}$/.test(authorization.nonce || '') ||
+          !/^0x[0-9a-fA-F]{40}$/.test(authorization.from || '') ||
+          authorization.to?.toLowerCase() !== config.payTo.toLowerCase() || authorization.value !== X402_AMOUNT) {
+        return errorResponse(402, 'invalid_payment_authorization');
+      }
+      const paymentHash = hash(stableJson(paymentPayload));
+      const requestId = randomUUID();
+      let claim;
+      try {
+        claim = await ledger.claim({
+          paymentHash, requestId, resourceUrl: request.url,
+          payer: authorization.from, network: config.network, asset: config.asset,
+          amount: X402_AMOUNT, payTo: config.payTo, nonce: authorization.nonce,
+          validBefore: authorization.validBefore,
+        });
+      } catch { return errorResponse(503, 'payment_ledger_unavailable'); }
+      if (!claim?.claimed) return errorResponse(409, 'payment_already_used', {
+        status: claim?.status || 'pending', ...(claim?.transaction ? { transaction: claim.transaction } : {}),
+      });
+      const finish = async (status, details = {}) => {
+        try {
+          await ledger.finish({ paymentHash, requestId, token: claim.token, status, ...details });
+        } catch {
+          // Never discard a successfully settled resource or release a reservation
+          // after an uncertain database write. Emit no signature/credential data.
+          console.error('[x402] Ledger completion needs reconciliation', { paymentHash, requestId, status });
+        }
+      };
+      const pendingDetails = (settlement, errorCode) => ({
+        ...(/^0x[0-9a-fA-F]{64}$/.test(settlement.transaction || '') ? {
+          transaction: settlement.transaction, payer: authorization.from, network: config.network,
+        } : {}),
+        errorCode,
+      });
+
+      let response;
+      let bytes;
+      try {
+        response = await handler(request, ...handlerArgs);
+        if (!(response instanceof Response)) throw new Error('Invalid resource response');
+        if (response.status < 200 || response.status >= 300) {
+          await finish('handler_failed', { errorCode: `resource_status_${response.status}` });
+          if (response.status >= 300 && response.status < 400) return errorResponse(502, 'resource_redirect_not_billable');
+          return new Response(response.body, { status: response.status, headers: x402ResponseHeaders(response.headers) });
+        }
+        if (response.status === 204 || !response.headers.get('content-type')?.includes('application/json')) throw new Error('Invalid resource content type');
+        const bodyReader = response.body?.getReader();
+        const chunks = [];
+        let total = 0;
+        if (bodyReader) {
+          while (true) {
+            const { value, done } = await bodyReader.read();
+            if (done) break;
+            total += value.byteLength;
+            if (total > MAX_BODY_BYTES) {
+              await bodyReader.cancel();
+              throw new Error('Resource exceeds maximum paid response size');
+            }
+            chunks.push(value);
+          }
+        }
+        bytes = Buffer.concat(chunks, total);
+        if (!bytes.length) throw new Error('Empty resource');
+        JSON.parse(bytes.toString('utf8'));
+      } catch {
+        await finish('handler_failed', { errorCode: 'resource_unavailable' });
+        return errorResponse(502, 'resource_unavailable');
+      }
+
+      let settlement;
+      try {
+        settlement = await httpServer.processSettlement(paymentPayload, paymentRequirements, result.declaredExtensions, {
+          request: context, responseBody: bytes,
+          responseHeaders: Object.fromEntries(response.headers),
+        });
+      } catch {
+        await finish('pending', { errorCode: 'settlement_indeterminate' });
+        return errorResponse(503, 'settlement_indeterminate', { paymentHash, retry: 'Do not create another payment authorization; reconcile this payment.' });
+      }
+      if (!settlement.success) {
+        const status = settlement.errorReason === 'settlement_pending' || settlement.transaction ? 'pending' : 'failed';
+        await finish(status, status === 'pending'
+          ? pendingDetails(settlement, settlement.errorReason || 'settlement_failed')
+          : { errorCode: settlement.errorReason || 'settlement_failed' });
+        return instructionsResponse(settlement.response);
+      }
+      if (!/^0x[0-9a-fA-F]{64}$/.test(settlement.transaction || '') ||
+          settlement.network !== config.network ||
+          settlement.payer?.toLowerCase() !== authorization.from.toLowerCase() ||
+          (settlement.amount && settlement.amount !== X402_AMOUNT)) {
+        await finish('pending', pendingDetails(settlement, 'invalid_settlement_receipt'));
+        return errorResponse(503, 'invalid_settlement_receipt');
+      }
+      await finish('settled', { transaction: settlement.transaction, payer: settlement.payer, network: settlement.network });
+      const headers = x402ResponseHeaders(response.headers);
+      headers.delete('Content-Length');
+      headers.delete('Content-Encoding');
+      headers.delete('Transfer-Encoding');
+      headers.delete('PAYMENT-REQUIRED');
+      headers.delete('PAYMENT-RESPONSE');
+      for (const [name, value] of Object.entries(settlement.headers || {})) headers.set(name, value);
+      headers.set('X-Content-SHA256', hash(bytes));
+      return new Response(bytes, { status: response.status, headers });
+    } finally {
+      permit?.release?.();
+    }
+  };
+}

@@ -196,6 +196,7 @@ export default function RootLayout({
                   <Link href="/about" prefetch={false}>
                     About
                   </Link>
+                  <Link href="/data-access" prefetch={false}>Data access</Link>
                   <Link href="/terms" prefetch={false}>Terms</Link>
                   <Link href="/privacy" prefetch={false}>Privacy</Link>
                   <a

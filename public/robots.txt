@@ -12,6 +12,7 @@ Allow: /api/v1/funds/
 Allow: /api/v1/managers/
 Allow: /api/v1/analysis/
 Allow: /api/fund-13f/market-review
+Allow: /api/x402
 
 # Sitemap location
 Sitemap: https://secedgarterminal.com/sitemap.xml

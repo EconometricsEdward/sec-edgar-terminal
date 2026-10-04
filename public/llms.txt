@@ -4,6 +4,20 @@ EDGAR Terminal is a free, source-linked research application for SEC filings, pu
 
 Public research is free without an account. Service terms and the privacy notice are at /terms and /privacy.
 
+## Paid machine access with x402
+
+- [Data access](https://secedgarterminal.com/data-access) and `GET /api/x402` describe dedicated paid resources and current payment activation status. Discovery is free. Existing public pages and public API previews remain free.
+- Paid endpoints require x402 protocol version 2 payment regardless of crawler or browser identity. Existing crawlers must support the protocol and authorize spending; ordinary page visits are not automatically billed.
+- Price: 0.01 USDC on Base mainnet (`eip155:8453`) per successfully settled paid GET. Each successful page of a paginated dataset is a separate paid request. This is advertised as $0.01; USDC is intended to track USD. No subscription or API key is required.
+- `GET /api/x402/v1/financials/{ticker}?basis=annual|quarter|ytd|ttm` — available prepared company financial history, periods, units and SEC evidence. Default basis is annual. No new SEC acquisition or guarantee of as-filed historical vintages.
+- `GET /api/x402/v1/refinancing?limit=100&offset=0&snapshot=...` — a page of the prepared refinancing snapshot, including liquidity context, source evidence and coverage. No basis query is accepted.
+- `GET /api/x402/v1/factor-universe?basis=ttm|annual&limit=100&offset=0&snapshot=...` — a page of a retained prepared SEC accounting fundamental universe snapshot. Default basis is ttm. A computed fallback is not accepted for paid pagination; unavailable retained data returns 503 without settlement. Not security-price or investment-return data.
+- Paginated endpoints accept limit 1–100 (default 100), offset 0–9999 (default 0), and an optional exact 64-character hexadecimal snapshot token. Responses contain snapshot metadata, `rows` or `companies`, and `pagination` with offset, limit, total, nextOffset and snapshot. Pin the first page's returned snapshot on subsequent requests. A changed snapshot returns HTTP 409 without settlement; restart the pull to avoid mixing versions. Page schemas are `edgar.paid-factor-page.v1` and `edgar.paid-refinancing-page.v1`.
+- When payment is active, unpaid access returns HTTP 402 with `PAYMENT-REQUIRED`; this does not guarantee source readiness. Compatible clients retry with `PAYMENT-SIGNATURE`; successful settled responses include `PAYMENT-RESPONSE`. Unavailable or invalid requests are not settled. HTTP 503 while configuration is required means payment is not active; do not infer a payable challenge.
+- Check amount, asset, recipient and network before signing. Keep receipts, set client-side spending limits and never share wallet private keys. Payment does not guarantee complete source coverage; preserve nulls, periods, retrieval dates, stale flags and original evidence. Some research also appears through public surfaces; paid delivery does not imply exclusive government data.
+- A pending or unknown settlement must be reconciled before creating another authorization. HTTP 409 can mean `payment_already_used`, with status and possible transaction information; distinguish it from `SNAPSHOT_CHANGED`. Do not automatically sign a replacement payment after a 402/409/503 error or a lost response.
+- Payment terms: https://secedgarterminal.com/terms. Payment privacy: https://secedgarterminal.com/privacy. Official buyer integration: https://docs.x402.org/getting-started/quickstart-for-buyers.
+
 ## Start here
 
 - [Home](https://secedgarterminal.com/): public research directory linking company financial analysis, filings, Portfolio, Market Briefing, Funds and institutional managers, and disclosure research. The main directory and source explanations are available in server-rendered HTML; no account is required.

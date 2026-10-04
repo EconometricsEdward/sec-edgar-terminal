@@ -2,7 +2,7 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import styles from "./legal.module.css";
 
-export const LEGAL_VERSION = "2026-09-20";
+export const LEGAL_VERSION = "2026-10-04";
 
 function SupportContact() {
   return (
@@ -20,10 +20,11 @@ export default function LegalShell({ title, intro, children }: { title: string; 
         <p className={styles.eyebrow}>EDGAR Terminal · Research and privacy</p>
         <h1>{title}</h1>
         <p className={styles.intro}>{intro}</p>
-        <p className={styles.updated}>Effective <time dateTime={LEGAL_VERSION}>September 20, 2026</time></p>
+        <p className={styles.updated}>Effective <time dateTime={LEGAL_VERSION}>October 4, 2026</time></p>
         <nav className={styles.nav} aria-label="Service policies">
           <Link href="/terms" prefetch={false}>Terms</Link>
           <Link href="/privacy" prefetch={false}>Privacy</Link>
+          <Link href="/data-access" prefetch={false}>Data access</Link>
         </nav>
       </header>
       <div className={styles.body}>{children}</div>

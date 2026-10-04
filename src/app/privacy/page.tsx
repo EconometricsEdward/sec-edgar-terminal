@@ -1,7 +1,7 @@
 import { buildPageMetadata } from "../../utils/siteMetadata";
 import LegalShell from "../terms/LegalShell";
 
-export const metadata = buildPageMetadata({ title: "Privacy Notice", description: "How EDGAR Terminal handles public research requests, browser storage and site analytics.", path: "/privacy" });
+export const metadata = buildPageMetadata({ title: "Privacy Notice", description: "How EDGAR Terminal handles research requests, x402 payment receipts, browser storage and site analytics.", path: "/privacy" });
 
 export default function PrivacyPage() {
   return <LegalShell title="Privacy notice" intro="This notice explains what reaches the service and what stays in your browser when you use EDGAR Terminal.">
@@ -9,8 +9,13 @@ export default function PrivacyPage() {
       <p>The public research pages do not require an account. Search terms, selected public companies or funds, and research requests reach EDGAR Terminal so it can retrieve and organize public data. Hosting and security services process ordinary connection and request information, such as an IP address and browser information, to deliver the site and protect against abuse.</p>
       <p>Saved portfolios, page preferences and supported local work use your browser’s storage. They do not automatically sync across devices. The interactive portfolio research tools send the public company identifiers needed for research; private notes and allocation values remain local unless you choose a tool or export that includes them. Programmatic API requests transmit whatever fields you include.</p>
     </section>
+    <section><h2>x402 payments and receipts</h2>
+      <p>Paid endpoint requests transmit signed payment authorization to the service and its payment facilitator for verification and settlement. EDGAR Terminal does not request wallet private keys. Full signed payment headers are not stored in the application's receipt records.</p>
+      <p>Receipt and replay-prevention records can contain the paid resource, amount, network, payer wallet address, transaction identifier, settlement status, timestamps and a hash identifying an authorization. They support delivery, payment questions and prevention of duplicate settlement. Records become eligible for routine cleanup 30 days after the authorization expires; cleanup timing varies with service activity. Legal obligations may require longer retention.</p>
+      <p>Wallet addresses and settled transactions can be visible on the public blockchain and associated with other public activity. Clearing browser data or deleting application records does not remove blockchain history. Your wallet and the payment facilitator operate under their own privacy notices.</p>
+    </section>
     <section><h2>Service providers and analytics</h2>
-      <p>Service providers host and secure the application and store prepared public research data. These include Vercel, Supabase and Upstash. Public-data retrieval uses source services such as SEC and CFTC endpoints. Providers may process connection and operational information in the United States or other locations where they operate.</p>
+      <p>Service providers host and secure the application and store prepared public research data. These include Vercel, Supabase and Upstash. Paid requests also use an x402 payment facilitator to verify and settle authorizations on Base. Public-data retrieval uses source services such as SEC and CFTC endpoints. Providers may process connection and operational information in the United States or other locations where they operate.</p>
       <p>Vercel Analytics and Speed Insights measure page usage and application performance. The site does not use these features to sell personal information or build cross-site advertising profiles. Browser “Do Not Track” signals do not change necessary security and request processing. External websites operate under their own privacy notices.</p>
       <p>Necessary records may be disclosed to address abuse, enforce service terms or comply with a valid legal obligation.</p>
     </section>

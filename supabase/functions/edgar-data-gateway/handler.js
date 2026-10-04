@@ -4,6 +4,7 @@ import { APPROVED_SEC_CIKS, SUPPORTING_SOURCE_CIKS } from './coverage.js';
 import { DISPOSABLE_CACHE_LIMITS as CACHE_LIMITS, disposableCachePolicy, disposableCacheFencePolicy, disposableCacheFenceResource } from './cachePolicy.js';
 import { DISCLOSURE_INDEX_LIMITS, disclosureIndexIdentity, validDisclosureIndexDocument, validDisclosureIndexSearch } from './disclosurePolicy.js';
 import { isApplicationConflict } from './conflictPolicy.js';
+import { X402_RPC_PARAMETERS, X402_LIMITS, validX402Rpc } from './x402Policy.js';
 export const TRUST = Object.freeze({
   issuer: 'https://oidc.vercel.com/econometricsedwards-projects',
   audience: 'https://vercel.com/econometricsedwards-projects',
@@ -50,6 +51,7 @@ const GROUPS = Object.freeze({
 // Unknown parameters are rejected rather than accidentally reaching a new SQL
 // overload or a future operation with wider privileges.
 export const RPC_PARAMETERS = Object.freeze({
+  ...X402_RPC_PARAMETERS,
   ...FUND_REVIEW_RPC_PARAMETERS,
   edgar_disclosure_document: ['p_cik', 'p_accession', 'p_primary_doc', 'p_parser_version'],
   edgar_disclosure_replace: ['p_document', 'p_passages'],
@@ -274,6 +276,10 @@ function membershipEvidence(value, snapshot) {
 function validateRpc(name, params, nowMs) {
   knownKeys(params, ['p_namespace', ...RPC_PARAMETERS[name]]);
   if (has(params, 'p_namespace') && params.p_namespace !== NAMESPACE) reject('namespace_denied', 403);
+  if (has(X402_RPC_PARAMETERS, name)) {
+    if (!validX402Rpc(name, params, nowMs)) reject('invalid_payment_receipt');
+    return { ...params, p_namespace: NAMESPACE };
+  }
   if (has(FUND_REVIEW_RPC_PARAMETERS, name)) {
     if (!validFundReviewRpc(name, params, nowMs)) reject('invalid_fund_review_request');
     return { ...params, p_namespace: NAMESPACE };
@@ -531,11 +537,12 @@ export function createGateway({ verifyToken, fetchImpl = fetch, env = defaultEnv
       if (request.headers.has('content-encoding') || request.headers.has('x-upsert')) reject('unsupported_headers', 400);
       const controller = new AbortController();
       let targetPath, body, raw = false;
-      const rpcMatch = /^\/rest\/v1\/rpc\/([a-z_]+)$/.exec(path);
+      const rpcMatch = /^\/rest\/v1\/rpc\/([a-z0-9_]+)$/.exec(path);
       // Evidence verification is the only larger operation. Ordinary reads keep
       // their original timeout, and injected shorter test/operator limits win.
       const secDispatchOperation = ['edgar_acquire_sec_dispatch', 'edgar_release_sec_dispatch', 'edgar_publish_sec_cooldown'].includes(rpcMatch?.[1]);
       const fundReviewOperation = has(FUND_REVIEW_RPC_PARAMETERS, rpcMatch?.[1]);
+      const x402Operation = has(X402_RPC_PARAMETERS, rpcMatch?.[1]);
       const cacheDataOperation = ['edgar_cache_get', 'edgar_cache_put', 'edgar_cache_put_fenced'].includes(rpcMatch?.[1]);
       const operationTimeout = secDispatchOperation ? Math.min(timeoutMs, 1500)
         : rpcMatch?.[1] === 'edgar_stage_membership' && timeoutMs === 5500 ? 15000
@@ -544,7 +551,7 @@ export function createGateway({ verifyToken, fetchImpl = fetch, env = defaultEnv
       if (rpcMatch && has(RPC_PARAMETERS, rpcMatch[1])) {
         if (request.method !== 'POST') reject('method_denied', 405);
         if (request.headers.get('content-type')?.split(';', 1)[0].trim() !== 'application/json') reject('content_type_denied', 415);
-        const bytes = await boundedBytes(request, fundReviewOperation ? FUND_REVIEW_LIMITS.rpcBytes : cacheDataOperation ? CACHE_LIMITS.rpcBytes : RPC_BYTES, controller.signal);
+        const bytes = await boundedBytes(request, x402Operation ? X402_LIMITS.rpcBytes : fundReviewOperation ? FUND_REVIEW_LIMITS.rpcBytes : cacheDataOperation ? CACHE_LIMITS.rpcBytes : RPC_BYTES, controller.signal);
         let parsed; try { parsed = JSON.parse(decoder.decode(bytes)); } catch { reject('invalid_json', 400); }
         const params = validateRpc(rpcMatch[1], parsed, now());
         if (rpcMatch[1] === 'edgar_stage_membership') await verifyMembershipEvidence(params, controller.signal);
@@ -589,7 +596,7 @@ export function createGateway({ verifyToken, fetchImpl = fetch, env = defaultEnv
         // rejected it once, so this response cannot trigger database retries.
         return json({ code: reviewRevisionChanged ? 'review_revision_changed' : applicationConflict ? '40001' : reviewCapacity ? 'fund_review_capacity' : cacheOverflow ? 'cache_response_too_large' : code === '40001' ? '40001' : 'upstream_failure' }, reviewRevisionChanged || applicationConflict ? 409 : status);
       }
-      const bytes = await boundedBytes(upstream, raw ? OBJECT_BYTES : fundReviewOperation ? FUND_REVIEW_LIMITS.rpcBytes : cacheDataOperation ? CACHE_LIMITS.rpcBytes : RPC_BYTES, controller.signal);
+      const bytes = await boundedBytes(upstream, raw ? OBJECT_BYTES : x402Operation ? X402_LIMITS.rpcBytes : fundReviewOperation ? FUND_REVIEW_LIMITS.rpcBytes : cacheDataOperation ? CACHE_LIMITS.rpcBytes : RPC_BYTES, controller.signal);
       return result(bytes, upstream.status, raw ? 'application/gzip' : 'application/json');
     } catch (error) {
       if (error instanceof GatewayError) return json({ code: error.code }, error.status);

@@ -96,6 +96,10 @@ XBRL values can be affected by restatements, non-standard company tags, amended 
 - The geographic table contains curated research groupings. Optional globe allocations and flows are explicitly illustrative scenarios, with a user-controlled scale and a component error boundary. They are not issuer-reported geographic exposure or historical observations.
 - Cohort history records actual calculation timestamps, with up to 30 daily observations and no invented backfill. Shared market snapshots require the existing Upstash warm-cache configuration; the page reports when persistence is unavailable. Cohort composition and latest reported periods may change between observations.
 
+## Paid machine data access
+
+Dedicated x402 v2 data endpoints charge 0.01 USDC on Base per successfully settled GET. Public pages and existing public API summaries remain free. See [payment implementation and activation](docs/x402-pay-per-crawl.md), `/data-access` and the free `/api/x402` catalog. Receiving-wallet configuration is required before production payments can be active; the server never needs its private key.
+
 ## License
 
 No license file is currently included. Treat the repository as source-available unless a license is added.
