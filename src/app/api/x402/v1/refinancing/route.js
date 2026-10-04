@@ -1,5 +1,6 @@
 import { createPaidHandler } from '../../../../../utils/x402Payments.js';
 import { x402Ledger } from '../../../../../utils/x402Ledger.js';
+import { x402DiscoveryOptions } from '../../../../../utils/x402Discovery.js';
 import { paidResearchReaders, paidResearchSelection, x402DataError, x402DataOptions, x402DataHead } from '../../../../../utils/x402Research.js';
 
 export const runtime = 'nodejs';
@@ -7,6 +8,7 @@ export const dynamic = 'force-dynamic';
 export const maxDuration = 90;
 const paidGet = createPaidHandler(async (request, context) => paidResearchReaders.page('refinancing', context.selection), {
   description: 'A page of prepared refinancing schedules, coverage and filing evidence.',
+  ...x402DiscoveryOptions('refinancing'),
   ledger: x402Ledger,
 });
 export function GET(request) {

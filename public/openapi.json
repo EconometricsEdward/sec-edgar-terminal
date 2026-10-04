@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "EDGAR Terminal Research and x402 Data APIs",
-    "version": "2.1.0",
+    "version": "2.2.0",
     "description": "Read-only company financial highlights, SEC fundamental universe, prepared N-PORT and Form 13F summaries, and official CFTC Commitments of Traders data. CFTC positioning is separate market context and is not an equity-price feed or trade signal. Dedicated x402 v2 endpoints deliver prepared machine-readable research for 0.01 USDC on Solana per successfully settled GET. Public pages, public API previews and discovery documents remain free. Payments may require activation; consult /api/x402."
   },
   "servers": [{ "url": "https://secedgarterminal.com" }],
@@ -457,6 +457,15 @@
           "amount": "10000",
           "decimals": 6
         },
+        "x-bazaar": {
+          "extension": "bazaar",
+          "serviceName": "SEC EDGAR Terminal",
+          "iconUrl": "https://secedgarterminal.com/favicon.svg",
+          "routeTemplate": "/api/x402/v1/financials/:ticker",
+          "tags": ["finance", "SEC", "financial-statements", "filing-evidence"],
+          "catalog": "https://secedgarterminal.com/api/x402",
+          "description": "Offers include input/path and schema-only output metadata. The payment resource stays the exact concrete request URL. External listing is facilitator-dependent and is not asserted by this document."
+        },
         "parameters": [
           {
             "name": "ticker",
@@ -488,6 +497,9 @@
             "headers": {
               "PAYMENT-RESPONSE": {
                 "$ref": "#/components/headers/PaymentResponse"
+              },
+              "EXTENSION-RESPONSES": {
+                "$ref": "#/components/headers/ExtensionResponses"
               }
             },
             "content": {
@@ -550,6 +562,15 @@
           "amount": "10000",
           "decimals": 6
         },
+        "x-bazaar": {
+          "extension": "bazaar",
+          "serviceName": "SEC EDGAR Terminal",
+          "iconUrl": "https://secedgarterminal.com/favicon.svg",
+          "routeTemplate": "/api/x402/v1/refinancing",
+          "tags": ["finance", "SEC", "refinancing", "debt-maturities"],
+          "catalog": "https://secedgarterminal.com/api/x402",
+          "description": "Offers include input/path and schema-only output metadata. The payment resource stays the exact concrete request URL. External listing is facilitator-dependent and is not asserted by this document."
+        },
         "parameters": [
           {
             "name": "limit",
@@ -588,6 +609,9 @@
             "headers": {
               "PAYMENT-RESPONSE": {
                 "$ref": "#/components/headers/PaymentResponse"
+              },
+              "EXTENSION-RESPONSES": {
+                "$ref": "#/components/headers/ExtensionResponses"
               }
             },
             "content": {
@@ -652,6 +676,15 @@
           "amount": "10000",
           "decimals": 6
         },
+        "x-bazaar": {
+          "extension": "bazaar",
+          "serviceName": "SEC EDGAR Terminal",
+          "iconUrl": "https://secedgarterminal.com/favicon.svg",
+          "routeTemplate": "/api/x402/v1/factor-universe",
+          "tags": ["finance", "SEC", "fundamentals", "sector-analysis"],
+          "catalog": "https://secedgarterminal.com/api/x402",
+          "description": "Offers include input/path and schema-only output metadata. The payment resource stays the exact concrete request URL. External listing is facilitator-dependent and is not asserted by this document."
+        },
         "parameters": [
           {
             "name": "basis",
@@ -702,6 +735,9 @@
             "headers": {
               "PAYMENT-RESPONSE": {
                 "$ref": "#/components/headers/PaymentResponse"
+              },
+              "EXTENSION-RESPONSES": {
+                "$ref": "#/components/headers/ExtensionResponses"
               }
             },
             "content": {
@@ -762,6 +798,10 @@
         "schema": {
           "type": "string"
         }
+      },
+      "ExtensionResponses": {
+        "description": "Optional base64-encoded extension outcomes reported by the facilitator. Inspect bazaar.status (success, processing or rejected); a paid response alone does not prove external catalog admission.",
+        "schema": { "type": "string" }
       },
       "PaymentResponse": {
         "description": "Base64-encoded x402 settlement receipt for this paid response. Keep the transaction identifier for support.",
@@ -1292,6 +1332,16 @@
           "payTo": {
             "type": "string",
             "description": "Public Solana settlement recipient when configured. Addresses are case-sensitive; no private key is returned."
+          },
+          "discovery": {
+            "type": "object",
+            "properties": {
+              "extension": { "type": "string", "const": "bazaar" },
+              "metadata": { "type": "string", "const": "enabled" },
+              "catalogRegistration": { "type": "string", "const": "facilitator-dependent" }
+            },
+            "description": "Server discovery capability, not proof of external listing. Each resource carries its declaration and service metadata.",
+            "additionalProperties": true
           },
           "resources": {
             "type": "array",

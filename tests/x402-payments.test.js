@@ -9,6 +9,8 @@ import { ExactSvmScheme as ExactSvmClient } from '@x402/svm/exact/client';
 import { ExactSvmScheme as ExactSvmFacilitator } from '@x402/svm/exact/facilitator';
 import { FacilitatorResponseError, FacilitatorTimeoutError } from '@x402/core/server';
 import { SettleError } from '@x402/core/types';
+import { validateDiscoveryExtension, validateDiscoveryExtensionSpec } from '@x402/extensions/bazaar';
+import { x402DiscoveryOptions, X402_OUTPUT_SCHEMAS } from '../src/utils/x402Discovery.js';
 import {
   createPaidHandler, createX402FacilitatorClient, createX402AttemptGate, getX402Config, getX402PublicConfiguration,
   X402_AMOUNT, X402_SOLANA_NETWORK, X402_SOLANA_USDC,
@@ -58,20 +60,23 @@ function assertPrivate(response) {
   assert.match(response.headers.get('access-control-expose-headers'), /PAYMENT-RESPONSE/);
 }
 
-function fixture({ handler = () => Response.json({ cik: '320193', value: 42 }), settlement, ledgerFailure, validate, attemptGate, recipientCheck, configuration = config } = {}) {
+function fixture({ handler = () => Response.json({ cik: '320193', value: 42 }), settlement, ledgerFailure, validate,
+  attemptGate = createX402AttemptGate(), recipientCheck, configuration = config, discovery = {} } = {}) {
   const state = { reads: 0, verifies: 0, settles: 0, claims: 0, supported: 0, finishes: [], reservations: new Map() };
   const svmFacilitator = new ExactSvmFacilitator({
     getAddresses: () => [feePayer.address],
     simulateTransaction: async () => {},
   });
   const facilitatorClient = {
-    async getSupported() { state.supported++; return { kinds: [{ x402Version: 2, scheme: 'exact', network: X402_SOLANA_NETWORK, extra: { feePayer: feePayer.address } }], extensions: [], signers: {} }; },
+    async getSupported() { state.supported++; return { kinds: [{ x402Version: 2, scheme: 'exact', network: X402_SOLANA_NETWORK, extra: { feePayer: feePayer.address } }], extensions: discovery.extensions?.bazaar ? ['bazaar'] : [], signers: {} }; },
     async verify(payload, requirements) {
       state.verifies++;
+      state.verifiedPayload = structuredClone(payload);
       return svmFacilitator.verify(payload, requirements);
     },
     async settle(payload, requirements) {
       state.settles++;
+      state.settledPayload = structuredClone(payload);
       assert.equal(requirements.amount, X402_AMOUNT);
       assert.equal(requirements.asset, X402_SOLANA_USDC);
       assert.equal(requirements.network, X402_SOLANA_NETWORK);
@@ -104,6 +109,7 @@ function fixture({ handler = () => Response.json({ cik: '320193', value: 42 }), 
   };
   const paid = createPaidHandler(async (...args) => { state.reads++; return handler(...args); }, {
     description: 'Offline test company package', config: configuration, facilitatorClient, ledger, validate, attemptGate, recipientCheck,
+    ...discovery,
   });
   return { paid, state };
 }
@@ -175,12 +181,125 @@ test('successful paid CORS exposes the price, freshness, discovery and payment h
   const response = await paid(signedRequest(await paymentPayload(paid)));
   assert.equal(response.status, 200);
   const exposed = response.headers.get('access-control-expose-headers').toLowerCase().split(/,\s*/);
-  for (const name of ['payment-required', 'payment-response', 'x-content-sha256', 'x-x402-price', 'x-data-stale', 'link', 'retry-after']) {
+  for (const name of ['payment-required', 'payment-response', 'extension-responses', 'x-content-sha256', 'x-x402-price', 'x-data-stale', 'link', 'retry-after']) {
     assert.ok(exposed.includes(name), `${name} is readable by browser buyers`);
   }
   assert.equal(response.headers.get('x-x402-price'), '0.01 USDC');
   assert.equal(response.headers.get('x-data-stale'), '1');
   assert.equal(response.headers.get('link'), '</data-access>; rel="help"');
+});
+
+const discoveryRequests = [
+  ['financials', 'https://secedgarterminal.com/api/x402/v1/financials/MSFT?basis=annual'],
+  ['refinancing', 'https://secedgarterminal.com/api/x402/v1/refinancing?limit=1&offset=0'],
+  ['factor-universe', 'https://secedgarterminal.com/api/x402/v1/factor-universe?basis=ttm&limit=1&offset=0'],
+];
+
+test('all three paid offers publish SDK-valid Bazaar schemas, service metadata and exact payment URLs', async () => {
+  for (const [id, url] of discoveryRequests) {
+    const discovery = x402DiscoveryOptions(id);
+    const { paid, state } = fixture({ discovery });
+    const response = await paid(new Request(url));
+    assert.equal(response.status, 402);
+    const required = decode(response.headers.get('PAYMENT-REQUIRED'));
+    assert.equal(required.resource.url, url, 'dynamic catalog grouping never changes the paid request URL');
+    assert.equal(required.resource.serviceName, 'SEC EDGAR Terminal');
+    assert.deepEqual(required.resource.tags, discovery.tags);
+    assert.equal(required.resource.iconUrl, 'https://secedgarterminal.com/favicon.svg');
+    assert.equal(required.accepts[0].amount, '10000');
+    const extension = required.extensions.bazaar;
+    assert.equal(validateDiscoveryExtension(extension).valid, true);
+    assert.equal(validateDiscoveryExtensionSpec(extension).valid, true);
+    assert.equal(extension.info.input.method, 'GET');
+    assert.deepEqual(extension.schema.properties.output.properties.example, X402_OUTPUT_SCHEMAS[id]);
+    assert.equal(extension.info.output.example, undefined, 'schemas do not invent financial example data');
+    if (id === 'financials') {
+      assert.equal(extension.routeTemplate, '/api/x402/v1/financials/:ticker');
+      assert.deepEqual(extension.info.input.pathParams, { ticker: 'MSFT' });
+    } else assert.equal(extension.routeTemplate, undefined);
+    assert.equal(state.verifies + state.claims + state.reads + state.settles, 0);
+  }
+});
+
+test('genuine SDK buyers echo all three Bazaar declarations unchanged through verification and settlement', async () => {
+  for (const [id, url] of discoveryRequests) {
+    const { paid, state } = fixture({ discovery: x402DiscoveryOptions(id), settlement: {
+      success: true, transaction: mockReceipt, network: X402_SOLANA_NETWORK, payer: buyer.address, amount: X402_AMOUNT,
+      extensionResponses: { bazaar: { status: 'processing' } },
+    } });
+    const required = decode((await paid(new Request(url))).headers.get('PAYMENT-REQUIRED'));
+    const payload = await paymentPayload(paid, url);
+    assert.deepEqual(payload.extensions, required.extensions);
+    assert.deepEqual(payload.resource, required.resource);
+    const response = await paid(signedRequest(payload, url));
+    assert.equal(response.status, 200);
+    assert.deepEqual(state.verifiedPayload.extensions, required.extensions);
+    assert.deepEqual(state.settledPayload.extensions, required.extensions);
+    assert.deepEqual(state.settledPayload.resource, required.resource);
+    assert.deepEqual(decode(response.headers.get('EXTENSION-RESPONSES')), { bazaar: { status: 'processing' } });
+    assert.equal(state.settles, 1);
+    assert.equal(state.finishes.at(-1).status, 'settled');
+  }
+});
+
+test('installed HTTP facilitator SDK parses real extension response headers and preserves outbound declarations', async () => {
+  const { paid } = fixture({ discovery: x402DiscoveryOptions('financials') });
+  const required = decode((await paid(new Request(resourceUrl))).headers.get('PAYMENT-REQUIRED'));
+  const payload = await paymentPayload(paid);
+  const captured = [];
+  const localFacilitator = createServer(async (request, response) => {
+    let body = ''; for await (const chunk of request) body += chunk;
+    captured.push(JSON.parse(body));
+    const result = request.url === '/verify' ? { isValid: true, payer: buyer.address }
+      : { success: true, transaction: mockReceipt, network: X402_SOLANA_NETWORK, payer: buyer.address, amount: X402_AMOUNT };
+    response.writeHead(200, { 'Content-Type': 'application/json',
+      'EXTENSION-RESPONSES': Buffer.from(JSON.stringify({ bazaar: { status: 'processing' } })).toString('base64') });
+    response.end(JSON.stringify(result));
+  });
+  await new Promise(resolve => localFacilitator.listen(0, '127.0.0.1', resolve));
+  try {
+    const facilitator = await createX402FacilitatorClient({ ...config,
+      facilitatorUrl: `http://127.0.0.1:${localFacilitator.address().port}` });
+    const verified = await facilitator.verify(payload, required.accepts[0]);
+    const settled = await facilitator.settle(payload, required.accepts[0]);
+    assert.deepEqual(verified.extensionResponses, { bazaar: { status: 'processing' } });
+    assert.deepEqual(settled.extensionResponses, { bazaar: { status: 'processing' } });
+    for (const request of captured) {
+      assert.deepEqual(request.paymentPayload.extensions, required.extensions);
+      assert.deepEqual(request.paymentPayload.resource, required.resource);
+    }
+    assert.equal(captured.length, 2);
+  } finally {
+    localFacilitator.closeAllConnections();
+    await new Promise(resolve => localFacilitator.close(resolve));
+  }
+});
+
+test('altered Bazaar declaration fails before facilitator verification or paid data work', async () => {
+  const { paid, state } = fixture({ discovery: x402DiscoveryOptions('financials') });
+  const payload = await paymentPayload(paid);
+  payload.extensions.bazaar.info.input.method = 'POST';
+  const response = await paid(signedRequest(payload));
+  assert.equal(response.status, 402);
+  assert.equal(state.verifies + state.claims + state.reads + state.settles, 0);
+});
+
+test('Bazaar rejection remains separate from successful payment and only actual bounded provider outcomes are exposed', async () => {
+  for (const outcome of [undefined, { status: 'unrecognized' }, { status: 'success' },
+    { status: 'rejected', rejectedReason: 'schema mismatch '.repeat(30), privateDetail: 'must not be exposed' }]) {
+    const { paid } = fixture({ discovery: x402DiscoveryOptions('financials'),
+      handler: () => Response.json({ value: 42 }, { headers: { 'EXTENSION-RESPONSES': 'untrusted-resource-header' } }),
+      settlement: { success: true, transaction: mockReceipt, network: X402_SOLANA_NETWORK, payer: buyer.address,
+        extensionResponses: outcome ? { bazaar: outcome } : undefined },
+    });
+    const response = await paid(signedRequest(await paymentPayload(paid)));
+    assert.equal(response.status, 200, 'directory listing status never reverses a settled purchase');
+    if (!outcome || outcome.status === 'unrecognized') assert.equal(response.headers.get('EXTENSION-RESPONSES'), null);
+    else {
+      const expected = { status: outcome.status, ...(outcome.status === 'rejected' ? { rejectedReason: outcome.rejectedReason.slice(0, 256) } : {}) };
+      assert.deepEqual(decode(response.headers.get('EXTENSION-RESPONSES')), { bazaar: expected });
+    }
+  }
 });
 
 test('paid handler forwards validated route context to the resource reader', async () => {

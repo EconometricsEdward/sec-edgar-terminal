@@ -6,6 +6,12 @@ Dedicated paid endpoints cost **0.01 USDC on Solana mainnet per successfully set
 
 `/data-access` is the human-readable guide. `GET /api/x402` is a free catalog exposing payment configuration status, protocol version, public recipient when active, and resource metadata. `/openapi.json` and `/llms.txt` describe the same contracts.
 
+The three paid routes declare the x402 **Bazaar discovery extension** with the official `@x402/extensions@2.28.0` helper. Their offers include query/path input schemas, response schemas, `SEC EDGAR Terminal` service metadata, topical tags and the site's public favicon. Company financials use `/api/x402/v1/financials/:ticker` as the discovery route template, while the payment resource remains the exact concrete requested URL, including query parameters. The SDK adds the actual ticker path parameter to the declaration; the template consolidates company URLs into one discovery entry rather than changing the payment binding.
+
+`src/utils/x402Discovery.js` owns these declarations. Output schemas describe prepared-reader contracts without fabricated financial values or an implied live sample. The free catalog also publishes the discovery contracts. Participating facilitators may index this metadata; deployment alone does not prove an external listing, successful cataloging or buyer demand. Check the facilitator's discovery catalog and any actual `EXTENSION-RESPONSES` Bazaar result before asserting registration. Discovery does not add a payment or change the 0.01-USDC retrieval price.
+
+Run `node scripts/check-x402-discovery.mjs` to validate the live offers and inspect PayAI's listing status and wallet-filtered catalog. To submit current declarations for indexing, run `node scripts/check-x402-discovery.mjs --register`. This uses a fresh unfunded signer held only in memory and sends genuine SDK payloads directly to PayAI `/verify`; it never sends a signed retry to the seller or calls `/settle`, and does not read wallet keys. Payment verification can fail for the unfunded signer while discovery is queued separately. Check the actual Bazaar outcome, then rerun the read-only command after asynchronous admission. A `processing` response alone does not establish a visible listing. See [PayAI's admission and refresh rules](https://docs.payai.network/x402/facilitators/bazaar).
+
 | Endpoint | Selection | Response |
 | --- | --- | --- |
 | `/api/x402/v1/financials/{ticker}` | `basis=annual|quarter|ytd|ttm`; defaults to annual | Full available prepared packed company financial model with periods, definitions, metrics and source/calculation catalogs |
@@ -55,6 +61,7 @@ Before activation, verify inactive responses, invalid selection rejection, 402 c
 - [x402 buyer guide](https://docs.x402.org/getting-started/quickstart-for-buyers)
 - [x402 seller guide](https://docs.x402.org/getting-started/quickstart-for-sellers)
 - [x402 V2 migration guide](https://docs.x402.org/guides/migration-v1-to-v2)
+- [x402 Bazaar discovery guide](https://docs.x402.org/extensions/bazaar)
 - [Official Solana x402 V2 guide](https://solana.com/docs/payments/agentic-payments/x402)
 - [Circle's native USDC contract and mint addresses](https://developers.circle.com/stablecoins/usdc-contract-addresses)
 

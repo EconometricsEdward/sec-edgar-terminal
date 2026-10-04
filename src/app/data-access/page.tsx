@@ -19,6 +19,23 @@ const requestExample = "curl -i 'https://secedgarterminal.com/api/x402/v1/factor
 export default async function DataAccessPage() {
   const configuration = await getX402LivePublicConfiguration(getX402PublicConfiguration());
   const clientExample = buildX402BuyerExample(configuration);
+  const directoryQuery = new URLSearchParams({ limit: '100', ...(configuration.payTo ? { payTo: configuration.payTo } : {}) });
+  const searchQuery = new URLSearchParams({ query: 'SEC EDGAR Terminal', ...(configuration.payTo ? { payTo: configuration.payTo } : {}) });
+  const dataCatalog = {
+    '@context': 'https://schema.org',
+    '@type': 'DataCatalog',
+    name: 'SEC EDGAR Terminal paid data catalog',
+    url: 'https://secedgarterminal.com/data-access',
+    description: 'Prepared financial research APIs with x402 access at 0.01 USDC on Solana per successfully settled retrieval. Public research remains free.',
+    dataset: X402_RESOURCES.map(resource => ({
+      '@type': 'Dataset',
+      name: resource.name,
+      description: `${resource.description} ${resource.limitations}`,
+      url: `https://secedgarterminal.com/data-access#${resource.id}`,
+      isAccessibleForFree: false,
+      distribution: { '@type': 'DataDownload', encodingFormat: 'application/json', contentUrl: `https://secedgarterminal.com${resource.example}` },
+    })),
+  };
   const active = configuration.status === 'active';
   const paymentStatus = active ? 'Payments active'
     : configuration.status === 'recipient-setup-required' ? 'USDC receiving account setup required'
@@ -30,6 +47,7 @@ export default async function DataAccessPage() {
     : 'Paid resources will accept payments once the payout wallet and settlement service are ready. No payment is collected while unavailable.';
   return (
     <article className={styles.page}>
+      <script type='application/ld+json' dangerouslySetInnerHTML={{ __html: JSON.stringify(dataCatalog).replace(/</g, '\\u003c') }} />
       <header className={styles.hero}>
         <div>
           <p className={styles.eyebrow}>Data access for crawlers & agents</p>
@@ -52,11 +70,21 @@ export default async function DataAccessPage() {
       <section className={styles.section} aria-labelledby='resources-title'>
         <div className={styles.sectionHeader}><p className={styles.eyebrow}>Resource catalog</p><h2 id='resources-title'>Choose a prepared dataset.</h2><p>The same price applies to each listed paid GET, including each page of a dataset. Coverage and source dates travel with the data.</p></div>
         <div className={styles.resources}>
-          {X402_RESOURCES.map(resource => <article key={resource.id}>
+          {X402_RESOURCES.map(resource => <article key={resource.id} id={resource.id}>
             <div><h3>{resource.name}</h3><p>{resource.description}</p><p className={styles.limitation}>{resource.limitations}</p></div>
             <div className={styles.route}><code>GET {resource.path}</code><p>{resource.parameters.map(parameter => `${parameter.name}: ${parameter.values.join(' | ')} (default ${parameter.default})`).join('; ')}</p></div>
           </article>)}
         </div>
+      </section>
+
+      <section className={styles.section} aria-labelledby='discovery-title'>
+        <div className={styles.sectionHeader}><p className={styles.eyebrow}>Agent discovery</p><h2 id='discovery-title'>Discover the three paid APIs.</h2><p>Financials, refinancing and company fundamentals publish Bazaar input and response schemas with each payment offer. Compatible facilitators can index the resources for agents. Each successfully settled retrieval costs 0.01 USDC.</p></div>
+        <div className={styles.links}>
+          <a href={`https://facilitator.payai.network/discovery/resources?${directoryQuery}`} target='_blank' rel='noopener noreferrer'>Browse PayAI catalog <ArrowUpRight size={15} aria-hidden='true' /></a>
+          <a href={`https://facilitator.payai.network/discovery/search?${searchQuery}`} target='_blank' rel='noopener noreferrer'>Search PayAI <ArrowUpRight size={15} aria-hidden='true' /></a>
+          <a href='https://docs.x402.org/extensions/bazaar' target='_blank' rel='noopener noreferrer'>Bazaar guide <ArrowUpRight size={15} aria-hidden='true' /></a>
+        </div>
+        <p className={styles.note}>External listing and indexing depend on the facilitator. These links let you inspect the directory; they do not establish a listing or paid demand. The free resource catalog remains available here.</p>
       </section>
 
       <section className={styles.section} aria-labelledby='payments-title'>

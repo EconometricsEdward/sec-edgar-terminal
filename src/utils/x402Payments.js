@@ -16,7 +16,7 @@ const BASE_HEADERS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, OPTIONS',
   'Access-Control-Allow-Headers': 'Accept, Content-Type, PAYMENT-SIGNATURE',
-  'Access-Control-Expose-Headers': 'PAYMENT-REQUIRED, PAYMENT-RESPONSE, X-Content-SHA256, X-X402-Price, X-Data-Stale, Link, Retry-After',
+  'Access-Control-Expose-Headers': 'PAYMENT-REQUIRED, PAYMENT-RESPONSE, EXTENSION-RESPONSES, X-Content-SHA256, X-X402-Price, X-Data-Stale, Link, Retry-After',
   'X-Content-Type-Options': 'nosniff',
 };
 
@@ -124,6 +124,15 @@ function receiptErrorCode(value, fallback = 'settlement_failed') {
 function unresolvedSettlementReason(value) {
   return ['settlement_pending', 'settlement_indeterminate', 'duplicate_settlement',
     'settlement_failed', 'unknown', 'unknown_reason', 'unknown_error'].includes(receiptErrorCode(value));
+}
+
+/** Publish only the facilitator's actual Bazaar outcome; discovery never changes the payment verdict. */
+function bazaarOutcomeHeader(settlement) {
+  const outcome = settlement.extensionResponses?.bazaar;
+  if (!outcome || !['success', 'processing', 'rejected'].includes(outcome.status)) return undefined;
+  const bazaar = { status: outcome.status, ...(outcome.status === 'rejected' && typeof outcome.rejectedReason === 'string'
+    ? { rejectedReason: outcome.rejectedReason.slice(0, 256) } : {}) };
+  return Buffer.from(JSON.stringify({ bazaar })).toString('base64');
 }
 
 /** Keep an already-broadcast transaction when the SDK's one pending retry loses its response. */
@@ -315,13 +324,15 @@ export function createPaidHandler(handler, options = {}) {
     if (!serverPromise || previousConfig !== key) {
       previousConfig = key;
       serverPromise = (async () => {
-        const [{ x402ResourceServer, x402HTTPResourceServer }, { ExactSvmScheme }, { SettleError }] = await Promise.all([
+        const [{ x402ResourceServer, x402HTTPResourceServer }, { ExactSvmScheme }, { SettleError }, { bazaarResourceServerExtension }] = await Promise.all([
           import('@x402/core/server'), import('@x402/svm/exact/server'),
           import('@x402/core/types'),
+          import('@x402/extensions/bazaar'),
         ]);
         const facilitator = options.facilitatorClient || await createX402FacilitatorClient(config);
         const resourceServer = new x402ResourceServer(preserveSettlementOutcome(facilitator, SettleError))
-          .register(config.network, new ExactSvmScheme());
+          .register(config.network, new ExactSvmScheme())
+          .registerExtension(bazaarResourceServerExtension);
         await resourceServer.initialize();
         return { resourceServer, x402HTTPResourceServer };
       })();
@@ -369,10 +380,10 @@ export function createPaidHandler(handler, options = {}) {
       const context = requestContext(request);
       try {
         const { resourceServer, x402HTTPResourceServer } = await getServer(config);
-        // Use the exact current GET path, and assert it matches. No wildcard or
-        // Next keyed-route miss can bypass the payment boundary.
+        // A configured route template groups discovery entries. The payment URL
+        // stays exact, and a route-pattern miss can never grant access.
         httpServer = new x402HTTPResourceServer(resourceServer, {
-          [`GET ${context.path}`]: {
+          [`GET ${options.routePattern || context.path}`]: {
             accepts: {
               scheme: 'exact', network: config.network, payTo: config.payTo,
               price: { amount: X402_AMOUNT, asset: config.asset },
@@ -382,6 +393,10 @@ export function createPaidHandler(handler, options = {}) {
             resource: request.url,
             description: options.description || 'SEC EDGAR Terminal structured financial data',
             mimeType: 'application/json',
+            ...(options.extensions ? { extensions: options.extensions } : {}),
+            ...(options.serviceName ? { serviceName: options.serviceName } : {}),
+            ...(options.tags ? { tags: options.tags } : {}),
+            ...(options.iconUrl ? { iconUrl: options.iconUrl } : {}),
             unpaidResponseBody: () => ({ contentType: 'application/json', body: { error: 'payment_required', price: X402_PRICE, currency: 'USDC' } }),
           },
         });
@@ -499,7 +514,10 @@ export function createPaidHandler(handler, options = {}) {
       headers.delete('Transfer-Encoding');
       headers.delete('PAYMENT-REQUIRED');
       headers.delete('PAYMENT-RESPONSE');
+      headers.delete('EXTENSION-RESPONSES');
       for (const [name, value] of Object.entries(settlement.headers || {})) headers.set(name, value);
+      const bazaarOutcome = bazaarOutcomeHeader(settlement);
+      if (bazaarOutcome) headers.set('EXTENSION-RESPONSES', bazaarOutcome);
       headers.set('X-Content-SHA256', hash(bytes));
       return new Response(bytes, { status: response.status, headers });
     } finally {

@@ -54,6 +54,20 @@ export function buildX402Catalog(configuration) {
     privacy: 'https://secedgarterminal.com/privacy',
     billingUnit: 'One successfully settled GET response from a listed paid endpoint.',
     publicResearch: 'Public research pages and existing public summaries remain freely accessible.',
-    resources: X402_RESOURCES.map(resource => ({ ...resource, price: configuration.price, currency: configuration.currency, network: configuration.network, ...token })),
+    discovery: {
+      extension: 'bazaar',
+      metadata: 'enabled',
+      catalogRegistration: 'facilitator-dependent',
+      documentation: 'https://docs.x402.org/extensions/bazaar',
+      ...X402_SERVICE_METADATA,
+      note: 'Paid offers publish discovery metadata. External directory listing, indexing and demand depend on participating facilitators; this catalog does not assert listing status.',
+    },
+    resources: X402_RESOURCES.map(resource => {
+      const { routePattern, ...discovery } = x402DiscoveryOptions(resource.id);
+      return { ...resource, price: configuration.price, currency: configuration.currency, network: configuration.network, ...token,
+        discovery: { routeTemplate: routePattern, ...discovery },
+      };
+    }),
   };
 }
+import { x402DiscoveryOptions, X402_SERVICE_METADATA } from './x402Discovery.js';
