@@ -3,7 +3,7 @@
   "info": {
     "title": "EDGAR Terminal Research and x402 Data APIs",
     "version": "2.1.0",
-    "description": "Read-only company financial highlights, SEC fundamental universe, prepared N-PORT and Form 13F summaries, and official CFTC Commitments of Traders data. CFTC positioning is separate market context and is not an equity-price feed or trade signal. Dedicated x402 v2 endpoints deliver prepared machine-readable research for 0.01 USDC on Base per successfully settled GET. Public pages, public API previews and discovery documents remain free. Payments may require activation; consult /api/x402."
+    "description": "Read-only company financial highlights, SEC fundamental universe, prepared N-PORT and Form 13F summaries, and official CFTC Commitments of Traders data. CFTC positioning is separate market context and is not an equity-price feed or trade signal. Dedicated x402 v2 endpoints deliver prepared machine-readable research for 0.01 USDC on Solana per successfully settled GET. Public pages, public API previews and discovery documents remain free. Payments may require activation; consult /api/x402."
   },
   "servers": [{ "url": "https://secedgarterminal.com" }],
   "tags": [
@@ -419,7 +419,7 @@
           "Paid data discovery"
         ],
         "summary": "Discover paid resources, pricing and current activation status",
-        "description": "Free catalog. No payment authorization or API key is required. An active catalog does not guarantee that every dataset is prepared.",
+        "description": "Free catalog. No payment authorization or API key is required. Reports payment configuration and native-USDC receiving-account readiness. recipient-setup-required means the receiving account needs setup; recipient-check-unavailable means its readiness could not be checked temporarily. These states do not collect payment. An active catalog does not guarantee that every dataset is prepared.",
         "security": [],
         "responses": {
           "200": {
@@ -441,7 +441,7 @@
           "Paid x402 data"
         ],
         "summary": "Retrieve prepared company financial history",
-        "description": "Financial reporting periods, units and source evidence use the same prepared calculator model as the research application. As-filed historical vintages are not guaranteed. Price is 0.01 USDC on Base mainnet per successfully settled GET. Public research remains free. No source acquisition is initiated by this request. Inspect the 402 offer before authorizing payment.",
+        "description": "Financial reporting periods, units and source evidence use the same prepared calculator model as the research application. As-filed historical vintages are not guaranteed. Price is 0.01 USDC on Solana mainnet per successfully settled GET. Public research remains free. No source acquisition is initiated by this request. Inspect the 402 offer before authorizing payment.",
         "security": [
           {
             "X402Payment": []
@@ -452,7 +452,10 @@
           "scheme": "exact",
           "price": "0.01",
           "currency": "USDC",
-          "network": "eip155:8453"
+          "network": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+          "asset": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+          "amount": "10000",
+          "decimals": 6
         },
         "parameters": [
           {
@@ -516,7 +519,7 @@
           "Paid x402 data"
         ],
         "summary": "Retrieve one page of the refinancing snapshot",
-        "description": "Response includes metadata, company records and pagination. Pin the snapshot across pages to avoid mixing versions. Unsupported query fields are rejected. Price is 0.01 USDC on Base mainnet per successfully settled GET. Public research remains free. No source acquisition is initiated by this request. Inspect the 402 offer before authorizing payment.",
+        "description": "Response includes metadata, company records and pagination. Pin the snapshot across pages to avoid mixing versions. Unsupported query fields are rejected. Price is 0.01 USDC on Solana mainnet per successfully settled GET. Public research remains free. No source acquisition is initiated by this request. Inspect the 402 offer before authorizing payment.",
         "security": [
           {
             "X402Payment": []
@@ -527,7 +530,10 @@
           "scheme": "exact",
           "price": "0.01",
           "currency": "USDC",
-          "network": "eip155:8453"
+          "network": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+          "asset": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+          "amount": "10000",
+          "decimals": 6
         },
         "parameters": [
           {
@@ -598,7 +604,7 @@
           "Paid x402 data"
         ],
         "summary": "Retrieve one page of the SEC fundamental universe",
-        "description": "Response includes snapshot metadata, company rows and pagination. Only retained prepared snapshots are accepted; a computed fallback returns 503 without settlement. Accounting measures do not represent security-price returns. Pin the snapshot across pages. Unsupported query fields are rejected. Price is 0.01 USDC on Base mainnet per successfully settled GET. Public research remains free. No source acquisition is initiated by this request. Inspect the 402 offer before authorizing payment.",
+        "description": "Response includes snapshot metadata, company rows and pagination. Only retained prepared snapshots are accepted; a computed fallback returns 503 without settlement. Accounting measures do not represent security-price returns. Pin the snapshot across pages. Unsupported query fields are rejected. Price is 0.01 USDC on Solana mainnet per successfully settled GET. Public research remains free. No source acquisition is initiated by this request. Inspect the 402 offer before authorizing payment.",
         "security": [
           {
             "X402Payment": []
@@ -609,7 +615,10 @@
           "scheme": "exact",
           "price": "0.01",
           "currency": "USDC",
-          "network": "eip155:8453"
+          "network": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+          "asset": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+          "amount": "10000",
+          "decimals": 6
         },
         "parameters": [
           {
@@ -1182,7 +1191,9 @@
             "type": "string",
             "enum": [
               "active",
-              "configuration-required"
+              "configuration-required",
+              "recipient-setup-required",
+              "recipient-check-unavailable"
             ]
           },
           "price": {
@@ -1200,8 +1211,22 @@
           "network": {
             "type": "string",
             "enum": [
-              "eip155:8453"
+              "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
             ]
+          },
+          "asset": {
+            "type": "string",
+            "enum": ["EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"],
+            "description": "Case-sensitive native USDC mint on Solana mainnet."
+          },
+          "amount": {
+            "type": "string",
+            "enum": ["10000"],
+            "description": "Exact per-request price in USDC token base units."
+          },
+          "decimals": {
+            "type": "integer",
+            "enum": [6]
           },
           "protocol": {
             "type": "string",
@@ -1217,7 +1242,7 @@
           },
           "payTo": {
             "type": "string",
-            "description": "Public settlement recipient when configured. No private key is returned."
+            "description": "Public Solana settlement recipient when configured. Addresses are case-sensitive; no private key is returned."
           },
           "resources": {
             "type": "array",
@@ -1409,7 +1434,7 @@
         }
       },
       "X402Unavailable": {
-        "description": "Payment configuration, settlement or prepared source data is unavailable. A pending or indeterminate settlement may have transferred funds. Keep receipt and transaction information, reconcile the original payment and do not automatically create a replacement authorization. Invalid or unavailable source responses are not settled.",
+        "description": "Payment configuration, recipient readiness, settlement or prepared source data is unavailable. Recipient-setup and recipient-check errors occur before payment collection. A pending or indeterminate settlement may have transferred funds. Keep receipt and transaction information, reconcile the original payment and do not automatically create a replacement authorization. Invalid or unavailable source responses are not settled.",
         "content": {
           "application/json": {
             "schema": {
@@ -1436,7 +1461,7 @@
         "type": "apiKey",
         "in": "header",
         "name": "PAYMENT-SIGNATURE",
-        "description": "x402 v2 signed payment authorization, not a static API key. Obtain requirements from a 402 response, validate the offer and sign with a funded Base wallet."
+        "description": "x402 v2 signed payment authorization, not a static API key. Obtain requirements from a 402 response, validate the offer and sign with a funded Solana wallet."
       }
     }
   }

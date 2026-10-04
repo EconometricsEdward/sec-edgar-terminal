@@ -5,24 +5,75 @@ import { readFile } from 'node:fs/promises';
 import { PGlite } from '@electric-sql/pglite';
 import { createX402Ledger } from '../src/utils/x402Ledger.js';
 import { createGateway, TRUST } from '../supabase/functions/edgar-data-gateway/handler.js';
-import { validX402Payment } from '../supabase/functions/edgar-data-gateway/x402Policy.js';
+import { validBase58Bytes, X402_SOLANA_NETWORK, X402_SOLANA_USDC, validX402Payment } from '../supabase/functions/edgar-data-gateway/x402Policy.js';
 
 const sha = value => createHash('sha256').update(value).digest('hex');
-const payer = `0x${'1'.repeat(40)}`, payTo = `0x${'2'.repeat(40)}`, nonce = `0x${'3'.repeat(64)}`;
-const asset = '0x833589fcd6edb6e08f4c7c32d4f71b54bda02913';
-const network = 'eip155:8453', transaction = `0x${'4'.repeat(64)}`;
+const BASE58 = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
+function encodeBase58(bytes) {
+  let value = BigInt(`0x${Buffer.from(bytes).toString('hex')}`), result = '';
+  while (value > 0n) { result = BASE58[Number(value % 58n)] + result; value /= 58n; }
+  for (const byte of bytes) { if (byte !== 0) break; result = `1${result}`; }
+  return result;
+}
+const payer = encodeBase58(Buffer.alloc(32, 1));
+const payTo = 'H6VfqLdNwYfFmA54TQeL28sx2LyWE1E5FLX6XGEN3pmb';
+const nonce = sha('decoded signed message');
+const asset = X402_SOLANA_USDC;
+const network = X402_SOLANA_NETWORK, transaction = encodeBase58(Buffer.alloc(64, 4));
 const resourceUrl = 'https://secedgarterminal.com/api/x402/v1/company/0000320193?snapshot=abc';
 function payment(overrides = {}) {
   return { paymentHash: sha('authorization'), resourceUrl, resourceHash: sha(resourceUrl), payer, payTo, asset, network,
-    amount: '10000', nonceHash: sha(nonce), validBefore: String(Math.floor(Date.now() / 1000) + 300), ...overrides };
+    amount: '10000', nonceHash: nonce, validBefore: String(Math.floor(Date.now() / 1000) + 300), ...overrides };
 }
-async function database() {
+async function database({ beforeSolana } = {}) {
   const db = new PGlite();
   await db.exec('create role anon nologin; create role authenticated nologin; create role service_role nologin bypassrls; grant usage on schema public to service_role;');
   await db.exec(await readFile(new URL('../supabase/migrations/20261004152305_edgar_x402_payment_receipts.sql', import.meta.url), 'utf8'));
+  if (beforeSolana) await beforeSolana(db);
+  await db.exec(await readFile(new URL('../supabase/migrations/20261004160213_edgar_x402_solana_receipts.sql', import.meta.url), 'utf8'));
   await db.exec('set role service_role');
   return db;
 }
+
+test('Solana migration preserves old Base ownership and receipts, and denies new Base claims', async () => {
+  const legacyPayer = `0x${'1'.repeat(40)}`, legacyPayTo = `0x${'2'.repeat(40)}`;
+  const legacyNetwork = 'eip155:8453', legacyTransaction = `0x${'4'.repeat(64)}`;
+  const legacy = payment({ payer: legacyPayer, payTo: legacyPayTo, network: legacyNetwork,
+    asset: '0x833589fcd6edb6e08f4c7c32d4f71b54bda02913' });
+  let oldClaim;
+  const db = await database({ beforeSolana: async db => { oldClaim = await claim(db, legacy); } });
+  try {
+    assert.equal(oldClaim.claimed, true);
+    await assert.rejects(claim(db, { ...legacy, paymentHash: sha('new-base-claim'), nonceHash: sha('new-base-nonce') }), { code: '22023' });
+    assert.deepEqual(await finish(db, oldClaim.token, { status: 'settled', transaction: legacyTransaction,
+      payer: legacyPayer, network: legacyNetwork }), { finished: true, status: 'settled' });
+    const { rows: [stored] } = await db.query('select * from edgar_private.x402_receipts');
+    assert.equal(stored.payer, legacyPayer); assert.equal(stored.pay_to, legacyPayTo);
+    assert.equal(stored.transaction_hash, legacyTransaction); assert.equal(stored.owner, oldClaim.token.owner);
+  } finally { await db.close(); }
+});
+
+test('case-sensitive Solana Base58 validation checks decoded sizes in JS and SQL', async () => {
+  const db = await database();
+  try {
+    for (const [value, bytes, expected] of [
+      [payer, 32, true], [payTo, 32, true], [asset, 32, true], [transaction, 64, true],
+      ['1'.repeat(31), 32, false], ['z'.repeat(44), 32, false], ['z'.repeat(88), 64, false],
+      ['0'.repeat(32), 32, false], [transaction.slice(1), 64, false],
+    ]) {
+      assert.equal(validBase58Bytes(value, bytes), expected, value);
+      const result = await db.query('select edgar_private.x402_base58_bytes($1::text,$2::integer) as valid', [value, bytes]);
+      assert.equal(result.rows[0].valid, expected, value);
+    }
+    const claimed = await claim(db);
+    await finish(db, claimed.token, { status: 'settled', transaction, payer, network });
+    const { rows: [row] } = await db.query('select * from edgar_private.x402_receipts');
+    assert.equal(row.pay_to, payTo); assert.equal(row.payer, payer); assert.equal(row.asset, asset);
+    assert.equal(row.transaction_hash, transaction);
+    assert.notEqual(row.pay_to, row.pay_to.toLowerCase());
+    assert.notEqual(row.transaction_hash, row.transaction_hash.toLowerCase());
+  } finally { await db.close(); }
+});
 async function claim(db, pay = payment(), owner = randomUUID()) {
   const result = await db.query('select public.edgar_x402_claim($1::text,$2::jsonb,$3::uuid) as value', ['production', pay, owner]);
   return result.rows[0].value;
@@ -62,7 +113,7 @@ test('ambiguous settlement and handler failures permanently consume verified aut
     assert.deepEqual(await claim(db), { claimed: false, status: 'pending', transaction });
     await finish(db, pending.token, { status: 'pending', errorCode: 'receipt_retry' });
     assert.deepEqual(await claim(db), { claimed: false, status: 'pending', transaction });
-    await assert.rejects(finish(db, pending.token, { status: 'pending', transaction: `0x${'8'.repeat(64)}`, payer, network }), { code: 'PT409' });
+    await assert.rejects(finish(db, pending.token, { status: 'pending', transaction: encodeBase58(Buffer.alloc(64, 8)), payer, network }), { code: 'PT409' });
     await assert.rejects(finish(db, pending.token, { status: 'failed' }), { code: 'PT409' });
     // A later confirmed settlement may reconcile the same pending owner.
     assert.deepEqual(await finish(db, pending.token, { status: 'settled', transaction, payer, network }), { finished: true, status: 'settled' });
@@ -81,7 +132,7 @@ test('SQL validates paid price, fixed token, expiration and receipt fields; no s
     for (const patch of [
       { amount: '9999' }, { amount: 10000 }, { asset: payTo }, { network: 'eip155:1' }, { payer: 'invalid' },
       { payTo: null }, { paymentHash: '' }, { nonceHash: '' }, { validBefore: '0' },
-      { validBefore: String(Math.floor(Date.now() / 1000) + 86410) }, { validBefore: String(Math.floor(Date.now() / 1000) - 1) },
+      { validBefore: String(Math.floor(Date.now() / 1000) + 610) }, { validBefore: String(Math.floor(Date.now() / 1000) - 1) },
       { resourceUrl: 'https://attacker.example/api/x402/v1/company' }, { resourceUrl: 'https://secedgarterminal.com/api/free' },
       { resourceUrl: 'https://secedgarterminal.com/api/x402/v1/company#fragment' }, { signature: 'must never persist' },
     ]) await assert.rejects(claim(db, payment(patch)), { code: '22023' }, JSON.stringify(patch));
@@ -125,7 +176,8 @@ test('adapter uses production OIDC only, fail-closes missing DB and rejects prev
   const input = { paymentHash: sha('authorization'), resourceUrl, payer, payTo, asset, network, amount: '10000', nonce,
     validBefore: String(Math.floor(Date.now() / 1000) + 300), requestId };
   const ledger = createX402Ledger({ env: { VERCEL_ENV: 'production' }, identityTokenImpl: async () => 'workload.token.signed',
-    fetchImpl: async (url, options) => { calls.push([url, options]); return Response.json({ claimed: true, token: { paymentHash: input.paymentHash, owner: requestId } }); } });
+    fetchImpl: async (url, options) => { calls.push([url, options]); return Response.json(url.endsWith('/edgar_x402_finish')
+      ? { finished: true, status: 'settled' } : { claimed: true, token: { paymentHash: input.paymentHash, owner: requestId } }); } });
   assert.equal(ledger.ready(), true);
   const claimed = await ledger.claim(input);
   assert.equal(claimed.claimed, true);
@@ -134,10 +186,14 @@ test('adapter uses production OIDC only, fail-closes missing DB and rejects prev
   assert.equal(calls[0][1].headers.apikey, undefined);
   assert.equal(calls[0][1].cache, 'no-store'); assert.equal(calls[0][1].redirect, 'error');
   const body = JSON.parse(calls[0][1].body);
-  assert.equal(body.p_payment.nonceHash, sha(nonce)); assert.equal(body.p_payment.nonce, undefined);
+  assert.equal(body.p_payment.nonceHash, nonce); assert.equal(body.p_payment.nonce, undefined);
+  assert.equal(body.p_payment.payer, payer); assert.equal(body.p_payment.payTo, payTo); assert.equal(body.p_payment.asset, asset);
   assert.equal(body.p_payment.signature, undefined); assert.equal(body.p_namespace, 'production');
   await assert.rejects(ledger.claim({ ...input, amount: '20000' }), { code: 'invalid_payment_claim' });
   assert.equal(calls.length, 1);
+  await ledger.finish({ token: claimed.token, status: 'settled', transaction, payer, network });
+  const receipt = JSON.parse(calls[1][1].body).p_receipt;
+  assert.equal(receipt.transaction, transaction); assert.equal(receipt.payer, payer); assert.equal(receipt.network, network);
   const unavailable = createX402Ledger({ env: { VERCEL_ENV: 'production' }, identityTokenImpl: async () => 'workload.token.signed', fetchImpl: async () => Response.json({ code: 'PGRST202' }, { status: 404 }) });
   await assert.rejects(unavailable.claim(input), { code: 'payment_ledger_http_404' });
   let accessed = false;

@@ -98,7 +98,7 @@ XBRL values can be affected by restatements, non-standard company tags, amended 
 
 ## Paid machine data access
 
-Dedicated x402 v2 data endpoints charge 0.01 USDC on Base per successfully settled GET. Public pages and existing public API summaries remain free. See [payment implementation and activation](docs/x402-pay-per-crawl.md), `/data-access` and the free `/api/x402` catalog. Receiving-wallet configuration is required before production payments can be active; the server never needs its private key.
+Dedicated x402 v2 data endpoints charge 0.01 native USDC on Solana mainnet per successfully settled GET. Public pages and existing public API summaries remain free. See [payment implementation and activation](docs/x402-pay-per-crawl.md), `/data-access` and the free `/api/x402` catalog. The production receiving wallet is configured through the public deployment configuration and must have a native-USDC receiving account before paid requests can settle; the server never needs its private key. Environment overrides and the payment kill switch remain available.
 
 ## License
 

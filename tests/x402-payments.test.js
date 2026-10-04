@@ -1,25 +1,50 @@
-import test from 'node:test';
+import test, { before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts';
-import { verifyTypedData } from 'viem';
+import { createServer } from 'node:http';
+import { generateKeyPairSigner, getBase58Decoder, getTransactionDecoder, getBase64EncodedWireTransaction } from '@solana/kit';
+import { TOKEN_PROGRAM_ADDRESS } from '@solana-program/token';
 import { x402Client } from '@x402/core/client';
-import { ExactEvmScheme } from '@x402/evm/exact/client';
+import { ExactSvmScheme as ExactSvmClient } from '@x402/svm/exact/client';
+import { ExactSvmScheme as ExactSvmFacilitator } from '@x402/svm/exact/facilitator';
 import {
   createPaidHandler, createX402FacilitatorClient, createX402AttemptGate, getX402Config, getX402PublicConfiguration,
-  X402_AMOUNT, X402_BASE_NETWORK, X402_BASE_USDC,
+  X402_AMOUNT, X402_SOLANA_NETWORK, X402_SOLANA_USDC,
 } from '../src/utils/x402Payments.js';
 
-// Offline fixtures: ephemeral signing account, mock settlement, no blockchain RPCs.
-const buyer = privateKeyToAccount(generatePrivateKey());
-const receivingAddress = '0x2222222222222222222222222222222222222222';
-const resourceUrl = 'https://secedgarterminal.com/api/crawl/company?cik=320193';
+// Offline fixtures: ephemeral signers, mock settlement and local-only mint/blockhash RPC.
+const buyer = await generateKeyPairSigner();
+const feePayer = await generateKeyPairSigner();
+const receivingAddress = 'H6VfqLdNwYfFmA54TQeL28sx2LyWE1E5FLX6XGEN3pmb';
+const resourceUrl = 'https://secedgarterminal.com/api/x402/v1/financials/AAPL?basis=annual';
 const config = getX402Config({ NODE_ENV: 'production', X402_PAY_TO: receivingAddress });
-const authorizationTypes = { TransferWithAuthorization: [
-  { name: 'from', type: 'address' }, { name: 'to', type: 'address' },
-  { name: 'value', type: 'uint256' }, { name: 'validAfter', type: 'uint256' },
-  { name: 'validBefore', type: 'uint256' }, { name: 'nonce', type: 'bytes32' },
-] };
+const mockReceipt = getBase58Decoder().decode(new Uint8Array(64).fill(171));
+let rpc;
+let rpcUrl;
+before(async () => {
+  rpc = createServer(async (request, response) => {
+    let body = ''; for await (const chunk of request) body += chunk;
+    const input = JSON.parse(body);
+    let result;
+    if (input.method === 'getAccountInfo') {
+      assert.equal(input.params[0], X402_SOLANA_USDC);
+      const data = Buffer.alloc(82); data[44] = 6; data[45] = 1;
+      result = { context: { slot: 1000 }, value: { data: [data.toString('base64'), 'base64'], executable: false, lamports: 1000000, owner: TOKEN_PROGRAM_ADDRESS, rentEpoch: 0, space: 82 } };
+    } else if (input.method === 'getLatestBlockhash') {
+      result = { context: { slot: 1000 }, value: { blockhash: getBase58Decoder().decode(new Uint8Array(32).fill(9)), lastValidBlockHeight: 2000 } };
+    } else throw new Error(`Unexpected offline RPC method ${input.method}`);
+    response.writeHead(200, { 'Content-Type': 'application/json' });
+    response.end(JSON.stringify({ jsonrpc: '2.0', id: input.id, result }));
+  });
+  await new Promise(resolve => rpc.listen(0, '127.0.0.1', resolve));
+  rpcUrl = `http://127.0.0.1:${rpc.address().port}`;
+});
+after(async () => { rpc.closeAllConnections(); await new Promise(resolve => rpc.close(resolve)); });
+
+function invalidateSignature(payload) {
+  const transaction = getTransactionDecoder().decode(Buffer.from(payload.payload.transaction, 'base64'));
+  payload.payload.transaction = getBase64EncodedWireTransaction({ ...transaction, signatures: { ...transaction.signatures, [buyer.address]: new Uint8Array(64) } });
+}
 
 function decode(header) { return JSON.parse(Buffer.from(header, 'base64').toString('utf8')); }
 function signedRequest(payload, url = resourceUrl) {
@@ -31,34 +56,27 @@ function assertPrivate(response) {
   assert.match(response.headers.get('access-control-expose-headers'), /PAYMENT-RESPONSE/);
 }
 
-function fixture({ handler = () => Response.json({ cik: '320193', value: 42 }), settlement, ledgerFailure, validate, attemptGate } = {}) {
-  const state = { reads: 0, verifies: 0, settles: 0, claims: 0, finishes: [], reservations: new Map() };
+function fixture({ handler = () => Response.json({ cik: '320193', value: 42 }), settlement, ledgerFailure, validate, attemptGate, recipientCheck, configuration = config } = {}) {
+  const state = { reads: 0, verifies: 0, settles: 0, claims: 0, supported: 0, finishes: [], reservations: new Map() };
+  const svmFacilitator = new ExactSvmFacilitator({
+    getAddresses: () => [feePayer.address],
+    simulateTransaction: async () => {},
+  });
   const facilitatorClient = {
-    async getSupported() { return { kinds: [{ x402Version: 2, scheme: 'exact', network: X402_BASE_NETWORK }], extensions: [], signers: {} }; },
+    async getSupported() { state.supported++; return { kinds: [{ x402Version: 2, scheme: 'exact', network: X402_SOLANA_NETWORK, extra: { feePayer: feePayer.address } }], extensions: [], signers: {} }; },
     async verify(payload, requirements) {
       state.verifies++;
-      try {
-        const a = payload.payload.authorization;
-        const matches = a.value === requirements.amount && a.to.toLowerCase() === requirements.payTo.toLowerCase();
-        const valid = matches && await verifyTypedData({
-          address: a.from,
-          domain: { name: 'USD Coin', version: '2', chainId: 8453, verifyingContract: X402_BASE_USDC },
-          types: authorizationTypes, primaryType: 'TransferWithAuthorization',
-          message: { ...a, value: BigInt(a.value), validAfter: BigInt(a.validAfter), validBefore: BigInt(a.validBefore) },
-          signature: payload.payload.signature,
-        });
-        return { isValid: valid, payer: a.from, ...(!valid ? { invalidReason: 'invalid_signature' } : {}) };
-      } catch { return { isValid: false, invalidReason: 'invalid_signature' }; }
+      return svmFacilitator.verify(payload, requirements);
     },
     async settle(payload, requirements) {
       state.settles++;
       assert.equal(requirements.amount, X402_AMOUNT);
-      assert.equal(requirements.asset, X402_BASE_USDC);
-      assert.equal(requirements.network, X402_BASE_NETWORK);
+      assert.equal(requirements.asset, X402_SOLANA_USDC);
+      assert.equal(requirements.network, X402_SOLANA_NETWORK);
       assert.equal(state.claims, 1, 'durable reservation precedes settlement');
       assert.equal(state.reads, 1, 'successful data preparation precedes settlement');
       if (settlement instanceof Error) throw settlement;
-      return settlement || { success: true, transaction: `0x${'a'.repeat(64)}`, network: requirements.network, payer: payload.payload.authorization.from, amount: requirements.amount };
+      return settlement || { success: true, transaction: mockReceipt, network: requirements.network, payer: buyer.address, amount: requirements.amount };
     },
   };
   const ledger = {
@@ -67,8 +85,10 @@ function fixture({ handler = () => Response.json({ cik: '320193', value: 42 }), 
       if (ledgerFailure) throw new Error('Database unavailable');
       assert.equal(input.amount, X402_AMOUNT);
       assert.match(input.paymentHash, /^[0-9a-f]{64}$/);
+      assert.equal(input.nonce, input.paymentHash);
+      assert.equal(input.payer, buyer.address);
       assert.match(input.requestId, /^[0-9a-f-]{36}$/);
-      const nonceKey = `${input.network}:${input.asset}:${input.payer}:${input.nonce}`.toLowerCase();
+      const nonceKey = `${input.network}:${input.asset}:${input.payer}:${input.nonce}`;
       if (state.reservations.has(nonceKey)) return { claimed: false, status: 'pending' };
       state.reservations.set(nonceKey, input);
       state.claims++;
@@ -77,7 +97,7 @@ function fixture({ handler = () => Response.json({ cik: '320193', value: 42 }), 
     async finish(input) { state.finishes.push(input); },
   };
   const paid = createPaidHandler(async (...args) => { state.reads++; return handler(...args); }, {
-    description: 'Offline test company package', config, facilitatorClient, ledger, validate, attemptGate,
+    description: 'Offline test company package', config: configuration, facilitatorClient, ledger, validate, attemptGate, recipientCheck,
   });
   return { paid, state };
 }
@@ -86,15 +106,18 @@ async function paymentPayload(paid, url = resourceUrl) {
   const offer = await paid(new Request(url));
   assert.equal(offer.status, 402);
   const required = decode(offer.headers.get('PAYMENT-REQUIRED'));
-  const client = new x402Client().register(X402_BASE_NETWORK, new ExactEvmScheme(buyer));
+  const client = new x402Client().register(X402_SOLANA_NETWORK, new ExactSvmClient(buyer, { rpcUrl }));
   return client.createPaymentPayload(required);
 }
 
 test('configuration requires a real nonzero recipient and refuses production testnet', () => {
   assert.equal(getX402Config({ NODE_ENV: 'production' }).ready, false);
-  assert.equal(getX402Config({ X402_PAY_TO: `0x${'0'.repeat(40)}` }).ready, false);
-  assert.equal(getX402Config({ NODE_ENV: 'production', X402_PAY_TO: receivingAddress, X402_NETWORK: 'eip155:84532' }).ready, false);
-  assert.equal(getX402Config({ NODE_ENV: 'test', X402_PAY_TO: receivingAddress, X402_NETWORK: 'eip155:84532' }).ready, true);
+  assert.equal(getX402Config({ X402_PAY_TO: '11111111111111111111111111111111' }).ready, false);
+  assert.equal(getX402Config({ NODE_ENV: 'production', X402_PAY_TO: receivingAddress, X402_NETWORK: 'solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1' }).ready, false);
+  assert.equal(getX402Config({ NODE_ENV: 'test', X402_PAY_TO: receivingAddress, X402_NETWORK: 'solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1' }).ready, true);
+  assert.equal(getX402Config({ VERCEL_ENV: 'production', NODE_ENV: 'production' }).payTo, receivingAddress);
+  assert.equal(getX402Config({ VERCEL_ENV: 'production', NODE_ENV: 'production' }).requireRecipientReady, true);
+  assert.equal(getX402Config({ NODE_ENV: 'development' }).ready, false);
   assert.equal(getX402PublicConfiguration({ VERCEL_ENV: 'preview', X402_PAY_TO: receivingAddress }).status, 'configuration-required');
   assert.equal(getX402Config({ X402_PAY_TO: receivingAddress, X402_FACILITATOR_URL: 'bad', PAYAI_API_KEY_ID: 'key', PAYAI_API_KEY_SECRET: 'secret' }).ready, false);
   const publicConfiguration = getX402PublicConfiguration({ X402_PAY_TO: receivingAddress });
@@ -114,8 +137,8 @@ test('unsigned GET returns v2 402 for exactly 0.01 native USDC without data work
   assert.equal(required.resource.url, resourceUrl);
   assert.equal(required.accepts.length, 1);
   assert.equal(required.accepts[0].amount, '10000');
-  assert.equal(required.accepts[0].asset, X402_BASE_USDC);
-  assert.equal(required.accepts[0].network, X402_BASE_NETWORK);
+  assert.equal(required.accepts[0].asset, X402_SOLANA_USDC);
+  assert.equal(required.accepts[0].network, X402_SOLANA_NETWORK);
   assert.equal(required.accepts[0].payTo, receivingAddress);
   assert.equal(required.accepts[0].extra.paymentFlow, 'authorization');
   assert.equal(state.reads + state.verifies + state.settles + state.claims, 0);
@@ -168,7 +191,7 @@ test('facilitator capabilities reject invalid and unbounded input before initial
 test('invalid signature never reserves, prepares, settles, or exposes the resource', async () => {
   const { paid, state } = fixture();
   const payload = await paymentPayload(paid);
-  payload.payload.signature = `0x${'0'.repeat(130)}`;
+  invalidateSignature(payload);
   const response = await paid(signedRequest(payload));
   assert.equal(response.status, 402);
   assertPrivate(response);
@@ -176,13 +199,41 @@ test('invalid signature never reserves, prepares, settles, or exposes the resour
   assert.equal(response.headers.get('PAYMENT-RESPONSE'), null);
 });
 
-test('changed authorization amount and payment network are rejected', async () => {
-  for (const mutate of [p => { p.payload.authorization.value = '1'; }, p => { p.accepted.network = 'eip155:84532'; }]) {
+test('changed payment amount and payment network are rejected', async () => {
+  for (const mutate of [p => { p.accepted.amount = '1'; }, p => { p.accepted.network = 'eip155:84532'; }]) {
     const { paid, state } = fixture();
     const payload = await paymentPayload(paid);
     mutate(payload);
     assert.equal((await paid(signedRequest(payload))).status, 402);
     assert.equal(state.reads + state.claims + state.settles, 0);
+  }
+});
+
+test('valid signature for a smaller transfer cannot purchase 0.01 USDC resource by editing HTTP amount', async () => {
+  const { paid, state } = fixture();
+  const offer = await paid(new Request(resourceUrl));
+  const required = decode(offer.headers.get('PAYMENT-REQUIRED'));
+  const original = required.accepts[0];
+  required.accepts = [{ ...original, amount: '1' }];
+  const client = new x402Client().register(X402_SOLANA_NETWORK, new ExactSvmClient(buyer, { rpcUrl }));
+  const payload = await client.createPaymentPayload(required);
+  payload.accepted = original;
+  assert.equal((await paid(signedRequest(payload))).status, 402);
+  assert.equal(state.reads + state.settles + state.claims, 0);
+});
+
+test('production recipient setup or uncertain readiness blocks offers before facilitator and data work', async () => {
+  for (const status of ['recipient-setup-required', 'recipient-check-unavailable']) {
+    const { paid, state } = fixture({
+      configuration: getX402Config({ VERCEL_ENV: 'production', NODE_ENV: 'production' }),
+      recipientCheck: async () => ({ ready: false, status }),
+    });
+    const response = await paid(new Request(resourceUrl));
+    assert.equal(response.status, 503);
+    assertPrivate(response);
+    assert.equal(response.headers.get('PAYMENT-REQUIRED'), null);
+    assert.equal(state.reads + state.verifies + state.settles + state.claims + state.supported, 0);
+    assert.equal((await response.json()).error, status === 'recipient-setup-required' ? 'receiving_account_not_ready' : 'receiving_account_check_unavailable');
   }
 });
 
@@ -245,10 +296,10 @@ test('handler error, redirect, invalid JSON and oversize response never settle',
 
 test('settlement failure and malformed settlement receipts withhold prepared content', async () => {
   const cases = [
-    { success: false, errorReason: 'insufficient_funds', transaction: '', network: X402_BASE_NETWORK },
-    { success: false, errorReason: 'settlement_pending', transaction: `0x${'b'.repeat(64)}`, network: X402_BASE_NETWORK },
-    { success: true, transaction: 'invalid', network: X402_BASE_NETWORK, payer: buyer.address },
-    { success: true, transaction: `0x${'a'.repeat(64)}`, network: 'eip155:84532', payer: buyer.address },
+    { success: false, errorReason: 'insufficient_funds', transaction: '', network: X402_SOLANA_NETWORK },
+    { success: false, errorReason: 'settlement_pending', transaction: mockReceipt, network: X402_SOLANA_NETWORK },
+    { success: true, transaction: 'invalid', network: X402_SOLANA_NETWORK, payer: buyer.address },
+    { success: true, transaction: mockReceipt, network: 'eip155:84532', payer: buyer.address },
   ];
   for (const settlement of cases) {
     const { paid, state } = fixture({ settlement });
@@ -257,10 +308,10 @@ test('settlement failure and malformed settlement receipts withhold prepared con
     assertPrivate(response);
     assert.equal((await response.text()).includes('"value":42'), false);
     assert.notEqual(state.finishes.at(-1).status, 'settled');
-    if (/^0x[0-9a-f]{64}$/.test(settlement.transaction || '')) {
+    if (settlement.transaction === mockReceipt) {
       assert.equal(state.finishes.at(-1).transaction, settlement.transaction);
-      assert.equal(state.finishes.at(-1).network, X402_BASE_NETWORK);
-      assert.equal(state.finishes.at(-1).payer.toLowerCase(), buyer.address.toLowerCase());
+      assert.equal(state.finishes.at(-1).network, X402_SOLANA_NETWORK);
+      assert.equal(state.finishes.at(-1).payer, buyer.address);
     }
   }
 });
@@ -268,7 +319,7 @@ test('settlement failure and malformed settlement receipts withhold prepared con
 test('resource URL mismatch is rejected before reservation and work', async () => {
   const { paid, state } = fixture();
   const payload = await paymentPayload(paid);
-  const response = await paid(signedRequest(payload, resourceUrl.replace('320193', '789019')));
+  const response = await paid(signedRequest(payload, resourceUrl.replace('AAPL', 'MSFT')));
   assert.equal(response.status, 402);
   assert.equal(state.reads + state.settles + state.claims, 0);
 });
@@ -287,9 +338,20 @@ test('same signed nonce with edited resource metadata cannot buy another resourc
   const { paid, state } = fixture();
   const payload = await paymentPayload(paid);
   assert.equal((await paid(signedRequest(payload))).status, 200);
-  const anotherUrl = resourceUrl.replace('320193', '789019');
+  const anotherUrl = resourceUrl.replace('AAPL', 'MSFT');
   payload.resource.url = anotherUrl;
   assert.equal((await paid(signedRequest(payload, anotherUrl))).status, 409);
+  assert.equal(state.settles, 1);
+  assert.equal(state.reads, 1);
+});
+
+test('editing unsigned fee-payer signature bytes cannot evade canonical signed-message replay lock', async () => {
+  const { paid, state } = fixture();
+  const payload = await paymentPayload(paid);
+  assert.equal((await paid(signedRequest(payload))).status, 200);
+  const transaction = getTransactionDecoder().decode(Buffer.from(payload.payload.transaction, 'base64'));
+  payload.payload.transaction = getBase64EncodedWireTransaction({ ...transaction, signatures: { ...transaction.signatures, [feePayer.address]: new Uint8Array(64).fill(99) } });
+  assert.equal((await paid(signedRequest(payload))).status, 409);
   assert.equal(state.settles, 1);
   assert.equal(state.reads, 1);
 });
@@ -325,7 +387,7 @@ test('invalid signature spam is capped per window, unsigned offers stay free, an
   const attemptGate = createX402AttemptGate({ maxConcurrent: 1, maxAttempts: 2, windowMs: 10000, now: () => now });
   const { paid, state } = fixture({ attemptGate });
   const payload = await paymentPayload(paid);
-  payload.payload.signature = `0x${'0'.repeat(130)}`;
+  invalidateSignature(payload);
   assert.equal((await paid(signedRequest(payload))).status, 402);
   assert.equal((await paid(signedRequest(payload))).status, 402);
   const capped = await paid(signedRequest(payload));

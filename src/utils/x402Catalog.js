@@ -1,5 +1,7 @@
 export const X402_DOCUMENTATION_URL = 'https://secedgarterminal.com/data-access';
 export const X402_DISCOVERY_VERSION = 'edgar.x402-catalog.v1';
+const SOLANA_MAINNET = 'solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp';
+const SOLANA_USDC = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
 const PAGE_PARAMETERS = [
   { name: 'limit', in: 'query', values: ['1–100'], default: '100' },
   { name: 'offset', in: 'query', values: ['0–9999'], default: '0' },
@@ -41,15 +43,17 @@ export const X402_RESOURCES = [
 ];
 
 export function buildX402Catalog(configuration) {
+  const token = configuration.network === SOLANA_MAINNET ? { asset: SOLANA_USDC, amount: '10000', decimals: 6 } : {};
   return {
     schemaVersion: X402_DISCOVERY_VERSION,
     ...configuration,
+    ...token,
     documentation: X402_DOCUMENTATION_URL,
     openapi: 'https://secedgarterminal.com/openapi.json',
     terms: 'https://secedgarterminal.com/terms',
     privacy: 'https://secedgarterminal.com/privacy',
     billingUnit: 'One successfully settled GET response from a listed paid endpoint.',
     publicResearch: 'Public research pages and existing public summaries remain freely accessible.',
-    resources: X402_RESOURCES.map(resource => ({ ...resource, price: configuration.price, currency: configuration.currency, network: configuration.network })),
+    resources: X402_RESOURCES.map(resource => ({ ...resource, price: configuration.price, currency: configuration.currency, network: configuration.network, ...token })),
   };
 }

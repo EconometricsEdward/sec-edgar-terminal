@@ -1,11 +1,12 @@
 import { createHash, createPrivateKey, randomUUID, sign } from 'node:crypto';
+import { X402_DEPLOYMENT_PAY_TO, X402_DEPLOYMENT_NETWORK } from './x402Deployment.js';
 
 export const X402_PRICE = '0.01';
 export const X402_AMOUNT = '10000';
-export const X402_BASE_NETWORK = 'eip155:8453';
-export const X402_BASE_USDC = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913';
-const TEST_NETWORK = 'eip155:84532';
-const TEST_USDC = '0x036CbD53842c5426634e7929541eC2318f3dCF7e';
+export const X402_SOLANA_NETWORK = 'solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp';
+export const X402_SOLANA_USDC = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
+const TEST_NETWORK = 'solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1';
+const TEST_USDC = '4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU';
 const MAX_BODY_BYTES = 4 * 1024 * 1024;
 const MAX_PAYMENT_HEADER_BYTES = 16384;
 const BASE_HEADERS = {
@@ -19,16 +20,27 @@ const BASE_HEADERS = {
   'X-Content-Type-Options': 'nosniff',
 };
 
+function validBase58Bytes(value, size) {
+  if (typeof value !== 'string' || !/^[1-9A-HJ-NP-Za-km-z]+$/.test(value) || value.length > 90) return false;
+  const alphabet = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
+  let number = 0n;
+  for (const character of value) number = number * 58n + BigInt(alphabet.indexOf(character));
+  let bytes = 0;
+  while (number) { number >>= 8n; bytes++; }
+  return bytes + (value.match(/^1*/)?.[0].length || 0) === size;
+}
+
 /** Public receiving address only. This server never needs the receiving wallet's key. */
 export function getX402Config(env = process.env) {
-  const payTo = String(env.X402_PAY_TO || '').trim();
-  const network = String(env.X402_NETWORK || X402_BASE_NETWORK).trim();
+  const productionFallback = env.VERCEL_ENV === 'production';
+  const payTo = String(env.X402_PAY_TO || (productionFallback ? X402_DEPLOYMENT_PAY_TO : '')).trim();
+  const network = String(env.X402_NETWORK || (productionFallback ? X402_DEPLOYMENT_NETWORK : X402_SOLANA_NETWORK)).trim();
   const disabled = /^(0|false|off)$/i.test(String(env.X402_ENABLED || ''));
   let errorCode = disabled ? 'payments_disabled' : '';
   if (env.VERCEL_ENV === 'preview') errorCode ||= 'preview_payments_disabled';
-  if (!/^0x[0-9a-fA-F]{40}$/.test(payTo) || /^0x0{40}$/i.test(payTo)) errorCode ||= 'receiving_wallet_required';
-  if (network !== X402_BASE_NETWORK && network !== TEST_NETWORK) errorCode ||= 'unsupported_network';
-  if (env.NODE_ENV === 'production' && network !== X402_BASE_NETWORK) errorCode ||= 'production_requires_base_mainnet';
+  if (!validBase58Bytes(payTo, 32) || /^1+$/.test(payTo)) errorCode ||= 'receiving_wallet_required';
+  if (network !== X402_SOLANA_NETWORK && network !== TEST_NETWORK) errorCode ||= 'unsupported_network';
+  if ((env.NODE_ENV === 'production' || productionFallback) && network !== X402_SOLANA_NETWORK) errorCode ||= 'production_requires_solana_mainnet';
   const facilitatorUrl = String(env.X402_FACILITATOR_URL || 'https://facilitator.payai.network').replace(/\/+$/, '');
   let facilitatorHostname = '';
   try {
@@ -48,10 +60,11 @@ export function getX402Config(env = process.env) {
   }
   return {
     ready: !errorCode,
+    requireRecipientReady: productionFallback,
     errorCode,
     payTo,
     network,
-    asset: network === TEST_NETWORK ? TEST_USDC : X402_BASE_USDC,
+    asset: network === TEST_NETWORK ? TEST_USDC : X402_SOLANA_USDC,
     price: X402_PRICE,
     amount: X402_AMOUNT,
     facilitatorUrl,
@@ -102,6 +115,31 @@ function stableJson(value) {
 }
 
 function hash(value) { return createHash('sha256').update(value).digest('hex'); }
+
+/** Extract identity from signed message bytes, never editable HTTP metadata or fee-payer signature slots. */
+async function verifiedSvmPayment(paymentPayload, requirements, config) {
+  const encoded = paymentPayload.payload?.transaction;
+  if (typeof encoded !== 'string' || !/^[A-Za-z0-9+/]+={0,2}$/.test(encoded)) throw new Error('Invalid wire transaction');
+  const wireBytes = Buffer.from(encoded, 'base64');
+  if (wireBytes.length > 1232 || !wireBytes.length || wireBytes.toString('base64') !== encoded) throw new Error('Invalid wire transaction');
+  const [kit, token] = await Promise.all([import('@solana/kit'), import('@solana-program/token')]);
+  const transaction = kit.getTransactionDecoder().decode(wireBytes);
+  const compiled = kit.getCompiledTransactionMessageDecoder().decode(transaction.messageBytes);
+  if (compiled.addressTableLookups?.length || compiled.header.numSignerAccounts > 2) throw new Error('Unsupported transaction layout');
+  const message = kit.decompileTransactionMessage(compiled);
+  const transfers = message.instructions.filter(instruction => instruction.programAddress === token.TOKEN_PROGRAM_ADDRESS);
+  if (transfers.length !== 1 || transfers[0].data?.length !== 10 || transfers[0].data[0] !== 12) throw new Error('Invalid token instruction');
+  const transfer = token.parseTransferCheckedInstruction(transfers[0]);
+  const payer = transfer.accounts.authority.address;
+  if (!validBase58Bytes(payer, 32) || !transaction.signatures[payer] || transaction.signatures[payer].length !== 64 ||
+      transfer.accounts.mint.address !== config.asset || transfer.data.amount !== BigInt(X402_AMOUNT) || transfer.data.decimals !== 6) {
+    throw new Error('Invalid USDC payment');
+  }
+  const [expectedDestination] = await token.findAssociatedTokenPda({ mint: config.asset, owner: config.payTo, tokenProgram: token.TOKEN_PROGRAM_ADDRESS });
+  if (transfer.accounts.destination.address !== expectedDestination || message.feePayer.address !== requirements.extra?.feePayer) throw new Error('Invalid recipient or fee payer');
+  const messageHash = hash(transaction.messageBytes);
+  return { payer, messageHash, nonce: messageHash, validBefore: String(Math.floor(Date.now() / 1000) + 600) };
+}
 
 /**
  * Local cost guard shared by all paid routes in one server process. Vercel may
@@ -233,11 +271,11 @@ export function createPaidHandler(handler, options = {}) {
     if (!serverPromise || previousConfig !== key) {
       previousConfig = key;
       serverPromise = (async () => {
-        const [{ x402ResourceServer, x402HTTPResourceServer }, { ExactEvmScheme }] = await Promise.all([
-          import('@x402/core/server'), import('@x402/evm/exact/server'),
+        const [{ x402ResourceServer, x402HTTPResourceServer }, { ExactSvmScheme }] = await Promise.all([
+          import('@x402/core/server'), import('@x402/svm/exact/server'),
         ]);
         const facilitator = options.facilitatorClient || await createX402FacilitatorClient(config);
-        const resourceServer = new x402ResourceServer(facilitator).register(config.network, new ExactEvmScheme());
+        const resourceServer = new x402ResourceServer(facilitator).register(config.network, new ExactSvmScheme());
         await resourceServer.initialize();
         return { resourceServer, x402HTTPResourceServer };
       })();
@@ -264,6 +302,14 @@ export function createPaidHandler(handler, options = {}) {
     try {
       if (typeof ledger.ready === 'function' && !(await ledger.ready())) return errorResponse(503, 'payment_ledger_unavailable');
     } catch { return errorResponse(503, 'payment_ledger_unavailable'); }
+    if (config.requireRecipientReady) {
+      try {
+        const recipientCheck = options.recipientCheck || (await import('./x402SolanaRecipient.js')).checkX402Recipient;
+        const recipient = await recipientCheck(config);
+        if (!recipient.ready) return errorResponse(503, recipient.status === 'recipient-setup-required'
+          ? 'receiving_account_not_ready' : 'receiving_account_check_unavailable');
+      } catch { return errorResponse(503, 'receiving_account_check_unavailable'); }
+    }
     const permit = request.headers.get('payment-signature')
       ? (options.attemptGate || sharedAttemptGate).acquire() : undefined;
     if (permit && !permit.allowed) {
@@ -283,9 +329,9 @@ export function createPaidHandler(handler, options = {}) {
           [`GET ${context.path}`]: {
             accepts: {
               scheme: 'exact', network: config.network, payTo: config.payTo,
-              price: { amount: X402_AMOUNT, asset: config.asset, extra: { name: 'USD Coin', version: '2' } },
+              price: { amount: X402_AMOUNT, asset: config.asset },
               maxTimeoutSeconds: 60,
-              extra: { assetTransferMethod: 'eip3009', paymentFlow: 'authorization' },
+              extra: { paymentFlow: 'authorization' },
             },
             resource: request.url,
             description: options.description || 'SEC EDGAR Terminal structured financial data',
@@ -303,22 +349,19 @@ export function createPaidHandler(handler, options = {}) {
       if (result.beforeHandlerSettlement) return errorResponse(503, 'unsupported_payment_flow');
 
       const { paymentPayload, paymentRequirements } = result;
-      const authorization = paymentPayload.payload?.authorization;
       if (paymentPayload.resource?.url !== request.url) return errorResponse(402, 'payment_resource_mismatch');
-      if (!authorization || !/^0x[0-9a-fA-F]{64}$/.test(authorization.nonce || '') ||
-          !/^0x[0-9a-fA-F]{40}$/.test(authorization.from || '') ||
-          authorization.to?.toLowerCase() !== config.payTo.toLowerCase() || authorization.value !== X402_AMOUNT) {
-        return errorResponse(402, 'invalid_payment_authorization');
-      }
-      const paymentHash = hash(stableJson(paymentPayload));
+      let proof;
+      try { proof = await verifiedSvmPayment(paymentPayload, paymentRequirements, config); }
+      catch { return errorResponse(402, 'invalid_payment_transaction'); }
+      const paymentHash = proof.messageHash;
       const requestId = randomUUID();
       let claim;
       try {
         claim = await ledger.claim({
           paymentHash, requestId, resourceUrl: request.url,
-          payer: authorization.from, network: config.network, asset: config.asset,
-          amount: X402_AMOUNT, payTo: config.payTo, nonce: authorization.nonce,
-          validBefore: authorization.validBefore,
+          payer: proof.payer, network: config.network, asset: config.asset,
+          amount: X402_AMOUNT, payTo: config.payTo, nonce: proof.nonce,
+          validBefore: proof.validBefore,
         });
       } catch { return errorResponse(503, 'payment_ledger_unavailable'); }
       if (!claim?.claimed) return errorResponse(409, 'payment_already_used', {
@@ -334,8 +377,8 @@ export function createPaidHandler(handler, options = {}) {
         }
       };
       const pendingDetails = (settlement, errorCode) => ({
-        ...(/^0x[0-9a-fA-F]{64}$/.test(settlement.transaction || '') ? {
-          transaction: settlement.transaction, payer: authorization.from, network: config.network,
+        ...(validBase58Bytes(settlement.transaction, 64) ? {
+          transaction: settlement.transaction, payer: proof.payer, network: config.network,
         } : {}),
         errorCode,
       });
@@ -391,9 +434,9 @@ export function createPaidHandler(handler, options = {}) {
           : { errorCode: settlement.errorReason || 'settlement_failed' });
         return instructionsResponse(settlement.response);
       }
-      if (!/^0x[0-9a-fA-F]{64}$/.test(settlement.transaction || '') ||
+      if (!validBase58Bytes(settlement.transaction, 64) ||
           settlement.network !== config.network ||
-          settlement.payer?.toLowerCase() !== authorization.from.toLowerCase() ||
+          settlement.payer !== proof.payer ||
           (settlement.amount && settlement.amount !== X402_AMOUNT)) {
         await finish('pending', pendingDetails(settlement, 'invalid_settlement_receipt'));
         return errorResponse(503, 'invalid_settlement_receipt');

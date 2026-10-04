@@ -1,6 +1,6 @@
 # x402 paid machine access
 
-Dedicated paid endpoints cost **0.01 USDC on Base mainnet per successfully settled GET**. A paginated response is one paid retrieval, so every successful page costs 0.01 USDC. Public research pages and existing public API summaries remain free. Existing crawlers do not pay automatically; clients must understand x402 and authorize spending.
+Dedicated paid endpoints cost **0.01 USDC on Solana mainnet per successfully settled GET**. A paginated response is one paid retrieval, so every successful page costs 0.01 USDC. Public research pages and existing public API summaries remain free. Existing crawlers do not pay automatically; clients must understand x402 and authorize spending.
 
 ## Discovery and resources
 
@@ -18,15 +18,19 @@ The fee buys paid machine delivery, not exclusive ownership of public records. S
 
 ## Activation
 
-The server needs the owner's **public Base payout address** in `X402_PAY_TO`, never a payout private key. Missing or invalid configuration produces availability errors without offering a payment challenge. `/data-access` and the catalog show `configuration-required` until the payment configuration is ready.
+Production is configured with the owner's public Solana payout address, `H6VfqLdNwYfFmA54TQeL28sx2LyWE1E5FLX6XGEN3pmb`, through `src/utils/x402Deployment.js`. This committed configuration contains only the public recipient and network and is used in production when no environment override is supplied. The server never needs the payout wallet's private key. `X402_PAY_TO` and `X402_NETWORK` can optionally override the deployment defaults; `X402_ENABLED=false` still disables payment access. Missing or invalid configuration produces availability errors without offering a payment challenge. `/data-access` and the catalog report the effective configuration status.
 
-The default network is Base mainnet (`eip155:8453`) and the accepted asset is USDC (`0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913`). The charge is fixed at 10,000 USDC base units, or 0.01 USDC. Production rejects testnet configuration. Development may use the separately configured test network; do not describe testnet transactions as earned revenue.
+The default network is Solana mainnet (`solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp`) and the accepted asset is USDC (`EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v`). The charge is fixed at 10,000 USDC base units (six decimals), or 0.01 USDC. Production rejects testnet configuration. Development may use the separately configured test network; do not describe testnet transactions as earned revenue.
+
+The configured owner must also have a canonical associated token account for native USDC. The server checks that receiving account before allowing paid requests. If it is absent, the public status is `recipient-setup-required` and paid routes return an uncharged availability error. The owner can create the USDC receiving account through their wallet or receive a native-USDC transfer that creates it. Once the required account exists and the readiness check succeeds, the service can accept payments without changing the public payout address. `recipient-check-unavailable` instead means the read-only account check failed temporarily; it does not establish a missing account. These readiness states block payments and preserve the public recipient in the catalog.
 
 `X402_FACILITATOR_URL` selects the HTTPS facilitator. The default is PayAI. If authenticated PayAI access is configured, provide both `PAYAI_API_KEY_ID` and `PAYAI_API_KEY_SECRET`; partial credential pairs are rejected. Confirm the facilitator's current network and asset support before activation. `X402_ENABLED=false` is the server-side kill switch.
 
 Anonymous facilitator capacity is finite. Plan merchant credentials and funded facilitator credits before scaling production traffic, or select another compatible facilitator. Facilitator fees reduce net revenue; the advertised resource price remains 0.01 USDC.
 
-Apply `supabase/migrations/20261004152305_edgar_x402_payment_receipts.sql` and deploy the gateway policy before offering production payments. Receipt operations must remain server-only. Do not expose service-role credentials, facilitator secrets or raw signed payment headers in public responses or logs.
+Apply `supabase/migrations/20261004152305_edgar_x402_payment_receipts.sql`, then `supabase/migrations/20261004160213_edgar_x402_solana_receipts.sql`, and deploy the gateway policy before offering production payments. The second migration preserves legacy receipts while admitting new Solana payments. Receipt operations must remain server-only. Do not expose service-role credentials, facilitator secrets or raw signed payment headers in public responses or logs.
+
+The read-only recipient check uses Solana's public mainnet RPC by default. `X402_SOLANA_RPC_URL` can select a dedicated HTTPS RPC service when needed. A failed check blocks payments rather than treating an unreachable account as ready.
 
 ## Request and settlement boundaries
 
@@ -42,7 +46,7 @@ Receipt accounting and atomic authorization claims prevent duplicate or concurre
 
 ## Client controls and verification
 
-The `/data-access` example uses the current `@x402/fetch` and `@x402/evm` V2 SDKs. It verifies the Base network, USDC asset, amount, expected recipient and exact resource URL before signing, and sets a 0.01 per-payment cap. Buyers also need a total budget and request limit. A signature alone must never grant free access before successful verification and settlement.
+The `/data-access` example uses the current `@x402/fetch`, `@x402/svm` and `@solana/kit` V2 client integration. A local development signer is constructed from a 64-byte Solana CLI keypair JSON file. No private key is entered into the website or sent to the resource server. Production agents should receive a constrained signing interface. The client checks the case-sensitive Solana network, native USDC mint, exact 10,000-unit amount, expected public recipient and exact resource URL before signing, and sets a 0.01 per-payment cap. Buyers also need a total budget and request limit. A signature alone must never grant free access before successful verification and settlement.
 
 Before activation, verify inactive responses, invalid selection rejection, 402 challenges, CORS and no-store headers. Test successful settlement, exact pricing, failed verification, concurrent/repeated signatures, expiry, unavailable sources and uncertain-settlement reconciliation with a mock facilitator or testnet. Run the site's normal lint, type and build checks. A live paid crawl needs a real funded buyer and the owner's real payout address; do not fabricate either or perform a real transfer without authorization.
 
@@ -51,5 +55,7 @@ Before activation, verify inactive responses, invalid selection rejection, 402 c
 - [x402 buyer guide](https://docs.x402.org/getting-started/quickstart-for-buyers)
 - [x402 seller guide](https://docs.x402.org/getting-started/quickstart-for-sellers)
 - [x402 V2 migration guide](https://docs.x402.org/guides/migration-v1-to-v2)
+- [Official Solana x402 V2 guide](https://solana.com/docs/payments/agentic-payments/x402)
+- [Circle's native USDC contract and mint addresses](https://developers.circle.com/stablecoins/usdc-contract-addresses)
 
 Implementation uses current V2 packages rather than the archived Vercel starter's older payment integration.

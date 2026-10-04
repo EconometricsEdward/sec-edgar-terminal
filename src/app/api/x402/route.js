@@ -1,4 +1,5 @@
 import { getX402PublicConfiguration } from '../../../utils/x402Payments.js';
+import { getX402LivePublicConfiguration } from '../../../utils/x402SolanaRecipient.js';
 import { buildX402Catalog } from '../../../utils/x402Catalog.js';
 
 export const runtime = 'nodejs';
@@ -11,8 +12,9 @@ const headers = {
   Link: '</data-access>; rel="describedby"; type="text/html"',
 };
 
-export function GET() {
-  return Response.json(buildX402Catalog(getX402PublicConfiguration()), { headers });
+export async function GET() {
+  const configuration = await getX402LivePublicConfiguration(getX402PublicConfiguration());
+  return Response.json(buildX402Catalog(configuration), { headers });
 }
 
 export function OPTIONS() {

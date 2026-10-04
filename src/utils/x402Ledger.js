@@ -1,11 +1,10 @@
 /** Server-only durable payment claim and receipt adapter. Never retains signed payment headers. */
 import { createHash, randomUUID } from 'node:crypto';
 import { getDataStoreIdentityToken } from './dataStoreIdentity.js';
-import { X402_LIMITS, validX402Payment, validX402Rpc } from '../../supabase/functions/edgar-data-gateway/x402Policy.js';
+import { X402_LIMITS, X402_SOLANA_NETWORK, validX402Payment, validX402Rpc } from '../../supabase/functions/edgar-data-gateway/x402Policy.js';
 
 const PROJECT = 'vvkihuduqqnxqahhbphs';
 const HASH = /^[a-f0-9]{64}$/;
-const NONCE = /^0x[a-fA-F0-9]{64}$/;
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 const hash = value => createHash('sha256').update(value).digest('hex');
 export class X402LedgerError extends Error {
@@ -73,10 +72,12 @@ export function createX402Ledger({ env = process.env, fetchImpl = (...args) => f
   }
   function ready() { try { configuration(env); return true; } catch { return false; } }
   async function claim({ paymentHash, resourceUrl, payer, network, asset, amount, payTo, nonce, validBefore, requestId = randomUUID() }) {
-    if (!HASH.test(paymentHash || '') || !NONCE.test(nonce || '') || !UUID.test(requestId)) throw new X402LedgerError('invalid_payment_claim', 422);
-    const payment = { paymentHash, resourceUrl, resourceHash: hash(resourceUrl), payer: payer?.toLowerCase(),
-      network, asset: asset?.toLowerCase(), amount: String(amount), payTo: payTo?.toLowerCase(),
-      nonceHash: hash(nonce.toLowerCase()), validBefore: String(validBefore) };
+    // Solana's nonce is the SHA256 of decoded, verified message bytes. It excludes
+    // signature slots, so altered wire signatures cannot create a second claim.
+    if (!HASH.test(paymentHash || '') || !HASH.test(nonce || '') || !UUID.test(requestId)) throw new X402LedgerError('invalid_payment_claim', 422);
+    const payment = { paymentHash, resourceUrl, resourceHash: hash(resourceUrl), payer,
+      network, asset, amount: String(amount), payTo,
+      nonceHash: nonce, validBefore: String(validBefore) };
     if (!validX402Payment(payment, now())) throw new X402LedgerError('invalid_payment_claim', 422);
     const result = await rpc('edgar_x402_claim', { p_payment: payment, p_owner: requestId });
     if (result?.claimed === true && result.token?.paymentHash === paymentHash && result.token?.owner === requestId) return result;
@@ -88,8 +89,9 @@ export function createX402Ledger({ env = process.env, fetchImpl = (...args) => f
     const claim = token || { paymentHash, owner: requestId };
     if (paymentHash !== undefined && claim.paymentHash !== paymentHash || requestId !== undefined && claim.owner !== requestId)
       throw new X402LedgerError('invalid_payment_receipt_owner', 422);
-    const receipt = { status, ...(transaction === undefined ? {} : { transaction: transaction.toLowerCase() }),
-      ...(payer === undefined ? {} : { payer: payer.toLowerCase() }), ...(network === undefined ? {} : { network }),
+    const normalize = value => network === X402_SOLANA_NETWORK ? value : value.toLowerCase();
+    const receipt = { status, ...(transaction === undefined ? {} : { transaction: normalize(transaction) }),
+      ...(payer === undefined ? {} : { payer: normalize(payer) }), ...(network === undefined ? {} : { network }),
       ...(errorCode === undefined ? {} : { errorCode }) };
     if (!validX402Rpc('edgar_x402_finish', { p_claim: claim, p_receipt: receipt }, now())) throw new X402LedgerError('invalid_payment_receipt', 422);
     const result = await rpc('edgar_x402_finish', { p_claim: claim, p_receipt: receipt });
