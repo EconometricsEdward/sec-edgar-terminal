@@ -15,7 +15,7 @@ import {
 // Offline fixtures: ephemeral signers, mock settlement and local-only mint/blockhash RPC.
 const buyer = await generateKeyPairSigner();
 const feePayer = await generateKeyPairSigner();
-const receivingAddress = 'H6VfqLdNwYfFmA54TQeL28sx2LyWE1E5FLX6XGEN3pmb';
+const receivingAddress = '5qe4MpMXzT6TeaUNZz7ApAzoQzTGpVWbz1VBGbGhrdiR';
 const resourceUrl = 'https://secedgarterminal.com/api/x402/v1/financials/AAPL?basis=annual';
 const config = getX402Config({ NODE_ENV: 'production', X402_PAY_TO: receivingAddress });
 const mockReceipt = getBase58Decoder().decode(new Uint8Array(64).fill(171));

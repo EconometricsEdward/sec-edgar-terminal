@@ -16,7 +16,7 @@ function encodeBase58(bytes) {
   return result;
 }
 const payer = encodeBase58(Buffer.alloc(32, 1));
-const payTo = 'H6VfqLdNwYfFmA54TQeL28sx2LyWE1E5FLX6XGEN3pmb';
+const payTo = '5qe4MpMXzT6TeaUNZz7ApAzoQzTGpVWbz1VBGbGhrdiR';
 const nonce = sha('decoded signed message');
 const asset = X402_SOLANA_USDC;
 const network = X402_SOLANA_NETWORK, transaction = encodeBase58(Buffer.alloc(64, 4));

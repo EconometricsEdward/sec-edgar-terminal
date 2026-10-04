@@ -1,9 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createX402RecipientCheck, getX402LivePublicConfiguration } from '../src/utils/x402SolanaRecipient.js';
-const config = { network: 'solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp', payTo: 'H6VfqLdNwYfFmA54TQeL28sx2LyWE1E5FLX6XGEN3pmb',
+const config = { network: 'solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp', payTo: '5qe4MpMXzT6TeaUNZz7ApAzoQzTGpVWbz1VBGbGhrdiR',
   asset: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v' };
-const account = '9yfMyQsU7G8wh8zfWDwKNyMr51fcv4vg2RZvQqiaiVnv';
+const account = '2mXS4P3775UedqUkf6idRyUe7hgHSbiU8H2U11JvXuYK';
 const initialized = () => ({ owner: 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA', executable: false,
   data: { parsed: { type: 'account', info: { owner: config.payTo, mint: config.asset, state: 'initialized' } } } });
 const response = value => Response.json({ jsonrpc: '2.0', result: { value } });

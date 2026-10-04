@@ -29,7 +29,7 @@ if (!Array.isArray(bytes) || bytes.length !== 64
   throw new Error('Expected a Solana CLI 64-byte keypair JSON file');
 }
 const signer = await createKeyPairSignerFromBytes(Uint8Array.from(bytes));
-const expectedRecipient = 'H6VfqLdNwYfFmA54TQeL28sx2LyWE1E5FLX6XGEN3pmb';
+const expectedRecipient = '5qe4MpMXzT6TeaUNZz7ApAzoQzTGpVWbz1VBGbGhrdiR';
 const url = 'https://secedgarterminal.com/api/x402/v1/factor-universe?basis=ttm&limit=100&offset=0';
 const usdc = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
 const network = 'solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp';
