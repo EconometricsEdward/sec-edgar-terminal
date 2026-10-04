@@ -127,8 +127,10 @@ function percentileMap(values) {
   return { values: result, eligible: sorted.length };
 }
 const financialColumns = ['schemaVersion', 'ticker', 'cik', 'name', 'basis', 'fetchedAt', 'checkedAt', 'freshUntil', 'stale',
-  'periodIndex', 'periodLabel', 'periodStart', 'periodEnd', 'periodFiled', 'metric', 'label', 'format', 'category', 'definition',
-  'value', 'unit', 'reason', 'sourceReferences', 'calculationReferences', 'limitations'];
+  'periodIndex', 'periodStart', 'periodEnd', 'periodFiled', 'periodFiscalYear', 'periodFiscalPeriod', 'periodForm', 'periodAccession',
+  'observationKind', 'observationStart', 'observationEnd', 'metric', 'label', 'format', 'category', 'definition',
+  'value', 'unit', 'unitBasis', 'classification', 'formula', 'reason', 'sourceReferences', 'calculationReferences', 'limitations'];
+const declaredFormatUnits = Object.freeze({ currency: 'USD', percent: '%', decimal: 'x', shares: 'shares', eps: 'USD/shares' });
 const screenColumns = ['schemaVersion', 'snapshot', 'snapshotAt', 'generatedAt', 'stale', 'criteria', 'totalMatches', 'offset', 'nextOffset',
   'ticker', 'cik', 'name', 'sector', 'financial', 'selectedMetric', 'selectedField', 'selectedValue', 'peerPercentile', 'peerEligible',
   ...metricKeys.flatMap(key => [`${key}.current`, `${key}.prior`, `${key}.change`, `${key}.unavailableReason`]),
@@ -187,9 +189,13 @@ export function createPaidProductReaders({ financialRead = readPreparedAnalysis,
             || point.calculationIds.some(id => !Number.isInteger(id) || id < 0 || id >= model.calculationCatalog.length)) return unavailable();
           rows.push({ schemaVersion: payload.schemaVersion, ticker: model.ticker, cik: model.cik, name: model.name, basis: model.basis,
             fetchedAt: company.fetchedAt, checkedAt: company.checkedAt, freshUntil: company.freshUntil, stale: company.stale,
-            periodIndex: index, periodLabel: period.label, periodStart: period.start, periodEnd: period.end, periodFiled: period.filed,
+            periodIndex: index, periodStart: period.start, periodEnd: period.end, periodFiled: period.filed,
+            periodFiscalYear: period.fy, periodFiscalPeriod: period.fp, periodForm: period.form, periodAccession: period.accession,
+            observationKind: point.observationPeriod?.kind, observationStart: point.observationPeriod?.start, observationEnd: point.observationPeriod?.end,
             metric: definition.key, label: definition.label, format: definition.format, category: definition.category, definition,
-            value: finite(point.value) ? point.value : null, unit: point.unit, reason: point.reason || point.note || null,
+            value: finite(point.value) ? point.value : null, unit: point.unit || declaredFormatUnits[definition.format] || null,
+            unitBasis: point.unit ? 'metric-observation' : declaredFormatUnits[definition.format] ? 'metric-definition-format' : 'not-specified',
+            classification: point.classification, formula: point.formula || definition.formula || null, reason: point.reason || point.note || null,
             sourceReferences: point.sourceIds.map(id => model.sourceCatalog[id]), calculationReferences: point.calculationIds.map(id => model.calculationCatalog[id]), limitations });
         }
       }
@@ -215,7 +221,7 @@ export function createPaidProductReaders({ financialRead = readPreparedAnalysis,
       const page = pageRows(identity, rows, selection);
       if (page instanceof Response) return page;
       const stale = value.sec_stale || value.status === 'stale';
-      const limitations = [...value.limitations, 'Screen bounds and metric values are percentage points. Missing selected values are excluded by default and are always excluded by numeric filters.',
+      const limitations = [...value.limitations, 'Current and prior growth/ratio values are percentages; changes are percentage-point differences. Numeric bounds use the selected field units. Missing selected values are excluded by default and are always excluded by numeric filters.',
         'Peer percentile is 100 × (values below + half of ties) / eligible values, within the selected sector before numeric filters. Higher percentile means a larger value, not a recommendation.',
         'The snapshot token pins both source data and screen criteria; page size and delivery format may change without changing that token.'];
       const payload = { schemaVersion: 'edgar.paid-fundamental-screen.v1', status: 'ready', stale, selection: criteria(selection),

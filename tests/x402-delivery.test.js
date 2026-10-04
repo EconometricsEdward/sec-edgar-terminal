@@ -123,6 +123,7 @@ test('private response table and both invoker RPCs deny anonymous/authenticated 
   try {
     const functions = (await db.query("select prosecdef from pg_proc where proname in ('edgar_x402_stage_delivery','edgar_x402_recover_delivery')")).rows;
     assert.equal(functions.length, 2); assert.ok(functions.every(value => !value.prosecdef));
+    await assert.rejects(db.query("update edgar_private.x402_deliveries set response_headers='{}'::jsonb"), { code: '42501' });
     for (const role of ['anon', 'authenticated']) {
       await db.exec(`reset role; set role ${role}`);
       await assert.rejects(db.query('select * from edgar_private.x402_deliveries'), { code: '42501' });
@@ -173,6 +174,9 @@ test('gateway requires authenticated production identity and admits only hashed 
   const token = { paymentHash: sha('claim'), owner: randomUUID() };
   for (const patch of [{ contentHash: sha('wrong') }, { gzipHash: sha('wrong') }, { rawBytes: bytes.length + 1 }])
     assert.equal((await gateway(stage({ p_claim: token, p_delivery: { ...delivery, ...patch } }))).status, 422);
+  const large = Buffer.alloc(4 * 1024 * 1024 + 1), oversizedGzip = gzipSync(large);
+  assert.equal((await gateway(stage({ p_claim: token, p_delivery: { ...delivery, gzipBase64: oversizedGzip.toString('base64'),
+    gzipHash: sha(oversizedGzip), contentHash: sha(large), rawBytes: 1 } }))).status, 413);
   assert.equal(forwarded, 1, 'corrupt bytes never reach the database');
   assert.equal((await gateway(stage({ p_claim: token, p_delivery: delivery }))).status, 200);
   assert.equal(forwarded, 2);

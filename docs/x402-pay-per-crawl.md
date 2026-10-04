@@ -33,7 +33,7 @@ Page size defaults to 100 and offset to 0. Pass the first page's returned `pagin
 
 - `sector=all` (default) or a sector slug from the prepared source snapshot.
 - `metric=revenueGrowth` (default), `operatingMargin`, `freeCashFlowMargin`, `equityToAssets`, `netMargin` or `cashToAssets`.
-- `field=change` (default), `current` or `prior`; optional finite decimal `min` and `max` bound the selected value in percentage points, matching the prepared fundamental metric contract.
+- `field=change` (default), `current` or `prior`; optional finite decimal `min` and `max` use the selected field's units. Current and prior growth/ratio values are percentage levels; changes are percentage-point differences.
 - `sort=metric` (default) or `ticker`; `order=desc` (default) or `asc`.
 - `missing=exclude` (default) or `include`. Missing numeric values stay null; JSON may include missing rows only when requested and no numeric bounds are supplied. Numeric bounds always exclude unavailable selected values. CSV numeric nulls are empty cells.
 
@@ -42,11 +42,11 @@ Each JSON row adds `selectedValue` and `peerPercentile`. Sector peer percentiles
 ### Credit screen
 
 - `sector=all` (default) or a sector ID from the prepared refinancing snapshot.
-- Optional nonnegative `minDebt` sets a minimum next-12-month maturity amount in USD; nonnegative `maxCashCoverage` sets a maximum cash/next-12-month-maturity ratio; finite signed `minInterestCoverage` sets a minimum available interest-coverage ratio. Decimal magnitudes are bounded to 1e15 and exponential notation is rejected.
+- Optional nonnegative `minDebt` sets a minimum first-maturity-bucket amount in USD; nonnegative `maxCashCoverage` sets a maximum cash/first-maturity-bucket ratio; finite signed `minInterestCoverage` sets a minimum available interest-coverage ratio. The first bucket covers the next fiscal year or a rolling twelve-month interval; preserve the profile basis and bucket start/end dates. Decimal magnitudes are bounded to 1e15 and exponential notation is rejected.
 - `coverage=reported` (default) or `complete`.
 - `sort=next12m` (default), `cashToNext12m`, `interestCoverage` or `ticker`; `order=desc` (default) or `asc`.
 
-Each JSON row adds `cashShortfallToNext12m = max(next-12-month debt maturities − cash, 0)` when the required observations are available. It is a comparison of reported inputs, not a financing forecast, solvency judgment or credit rating.
+Each JSON row adds `cashShortfallToNext12m = max(first-maturity-bucket principal − cash, 0)` when the required observations are available. The existing code keys `next12m`, `cashToNext12m` and `cashShortfallToNext12m` refer to that first bucket; their names do not establish a rolling twelve-month interval. This is a comparison of reported inputs, not a financing forecast, solvency judgment or credit rating.
 
 Both screens use `limit=1..100`, `offset=0..9999`, optional exact SHA-256 `snapshot` and `format=json|csv`. No matching rows return HTTP 404; a changed token returns 409; an out-of-range page returns 416; unavailable prepared coverage returns 503. These outcomes do not settle payments. The batch is all-or-fail: an unavailable company does not silently turn a requested batch into a partial paid response.
 
@@ -76,7 +76,7 @@ The configured owner must also have a canonical associated token account for nat
 
 Anonymous facilitator capacity is finite. Plan merchant credentials and funded facilitator credits before scaling production traffic, or select another compatible facilitator. Facilitator fees reduce net revenue; the advertised resource price remains 0.01 USDC.
 
-Apply `supabase/migrations/20261004152305_edgar_x402_payment_receipts.sql`, then `supabase/migrations/20261004160213_edgar_x402_solana_receipts.sql`, and deploy the gateway policy before offering production payments. The second migration preserves legacy receipts while admitting new Solana payments. Receipt operations must remain server-only. Do not expose service-role credentials, facilitator secrets or raw signed payment headers in public responses or logs.
+Apply `supabase/migrations/20261004152305_edgar_x402_payment_receipts.sql`, then `supabase/migrations/20261004160213_edgar_x402_solana_receipts.sql`, then `supabase/migrations/20261004225742_edgar_x402_delivery_recovery.sql`, and deploy the updated gateway policy before offering the corresponding production payment and recovery features. The second migration preserves legacy receipts while admitting new Solana payments; the third adds opted-in response staging and recovery. Receipt and recovery storage operations must remain server-only. Do not expose service-role credentials, facilitator secrets, recovery tokens or raw signed payment headers in public responses or logs.
 
 The read-only recipient check uses Solana's public mainnet RPC by default. `X402_SOLANA_RPC_URL` can select a dedicated HTTPS RPC service when needed. A failed check blocks payments rather than treating an unreachable account as ready.
 
@@ -102,7 +102,7 @@ A pending settlement returns 202 with status information and no data; it needs r
 
 ## Client controls and verification
 
-The `/data-access` example uses the pinned V2 client packages `@x402/core@2.28.0`, `@x402/fetch@2.28.0`, `@x402/svm@2.28.0` and `@solana/kit@6.9.0`. Save it as a local `.mjs` file. A local development signer is constructed from a 64-byte Solana CLI keypair JSON file. No private key is entered into the website or sent to the resource server. Production agents should receive a constrained signing interface. The displayed example uses the effective public recipient and network, checks the exact scheme, case-sensitive network, native USDC mint, exact 10,000-unit amount, recipient and resource URL before signing, and configures a 0.01 per-payment cap with `setSpendControls`. The `x402Client` constructor accepts a requirements selector, not a configuration object. The example preserves the response receipt and error body for reconciliation. Buyers also need a total budget and request limit. A signature alone must never grant free access before successful verification and settlement.
+The `/data-access` example uses the pinned V2 client packages `@x402/core@2.28.0`, `@x402/fetch@2.28.0`, `@x402/svm@2.28.0` and `@solana/kit@6.9.0`. Save it as a local `.mjs` file. Set `PAYER_KEYPAIR_FILE` to a local 64-byte Solana CLI keypair JSON file for the development signer. Set `RECOVERY_FILE` to a new private file in an existing local directory, choosing a unique filename for each purchase. The example persists recovery details before requesting payment, refuses to overwrite an existing file and uses the saved file to recover that same purchase without a new authorization. Keep both files private. No private key is entered into the website or sent to the resource server. Production agents should receive a constrained signing interface. The displayed example uses the effective public recipient and network, checks the exact scheme, case-sensitive network, native USDC mint, exact 10,000-unit amount, recipient and resource URL before signing, and configures a 0.01 per-payment cap with `setSpendControls`. The `x402Client` constructor accepts a requirements selector, not a configuration object. The example preserves the response receipt and error body for reconciliation. Buyers also need a total budget and request limit. A signature alone must never grant free access before successful verification and settlement.
 
 Before activation, verify inactive responses, invalid selection rejection, 402 challenges, CORS and no-store headers. Test successful settlement, exact pricing, failed verification, concurrent/repeated signatures, expiry, unavailable sources and uncertain-settlement reconciliation with a mock facilitator or testnet. Run the site's normal lint, type and build checks. A live paid crawl needs a real funded buyer and the owner's real payout address; do not fabricate either or perform a real transfer without authorization.
 

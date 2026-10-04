@@ -6,7 +6,7 @@ export function buildX402BuyerExample(configuration) {
 import { wrapFetchWithPayment } from '@x402/fetch';
 import { ExactSvmScheme } from '@x402/svm/exact/client';
 import { createKeyPairSignerFromBytes } from '@solana/kit';
-import { readFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 
 // Local development wallet only; never upload its keypair to this site.
 const file = process.env.PAYER_KEYPAIR_FILE;
@@ -36,30 +36,36 @@ client.onBeforePaymentCreation(async ({ paymentRequired, selectedRequirements: o
 });
 const paidFetch = wrapFetchWithPayment(fetch, client);
 
-// Generate a new private capability for each purchase. Persist it privately
-// before sending the request; never put it in a URL or a public issue.
+// Choose a new private file for each purchase. Exclusive creation refuses to
+// overwrite an existing recovery file or wallet keypair.
+const recoveryFile = process.env.RECOVERY_FILE;
+if (!recoveryFile) throw new Error('Choose a new local recovery file with RECOVERY_FILE');
 const recoveryToken = Array.from(crypto.getRandomValues(new Uint8Array(32)),
   byte => byte.toString(16).padStart(2, '0')).join('');
-const recovery = { url: 'https://secedgarterminal.com/api/x402/v1/delivery', token: recoveryToken };
+const recovery = { url: 'https://secedgarterminal.com/api/x402/v1/delivery', token: recoveryToken, resourceUrl: url };
+writeFileSync(recoveryFile, JSON.stringify(recovery), { encoding: 'utf8', flag: 'wx', mode: 0o600 });
 let response;
+let receipt;
+let data;
 try {
   response = await paidFetch(url, { headers: { 'X-X402-Recovery-Token': recoveryToken } });
+  receipt = response.headers.get('PAYMENT-RESPONSE');
+  data = await response.json();
 } catch (error) {
-  throw new Error(JSON.stringify({ error: error.message, recovery,
-    nextStep: 'Use ordinary fetch to the recovery URL with the token header. Do not authorize a replacement payment.' }));
+  throw new Error(JSON.stringify({ error: error.message, ...(response ? { status: response.status, receipt } : {}), recoveryFile,
+    nextStep: 'Read the saved recovery file and use ordinary fetch with its token header. Do not authorize a replacement payment.' }));
 }
-const receipt = response.headers.get('PAYMENT-RESPONSE');
-const data = await response.json();
 if (!response.ok) {
   // Preserve these details and reconcile before authorizing another payment.
-  throw new Error(JSON.stringify({ status: response.status, receipt, error: data, recovery }));
+  throw new Error(JSON.stringify({ status: response.status, receipt, error: data, recoveryFile }));
 }
-console.log(JSON.stringify({ receipt, data, recovery,
+console.log(JSON.stringify({ receipt, data, recoveryFile,
   recoveryUntil: response.headers.get('X-X402-Recovery-Until') }));
 
 // Recover without another payment if delivery was interrupted:
-// const recovered = await fetch(recovery.url, {
-//   headers: { 'X-X402-Recovery-Token': recovery.token }
+// const savedRecovery = JSON.parse(readFileSync(recoveryFile, 'utf8'));
+// const recovered = await fetch(savedRecovery.url, {
+//   headers: { 'X-X402-Recovery-Token': savedRecovery.token }
 // });
 // 200: exact paid response; 202: pending settlement; 404: missing/expired.
 // Keep the recovery details private. Recovery access lasts 24 hours.`;

@@ -75,21 +75,34 @@ function fixture() {
 
 // Execute the exact displayed body, with genuine pinned SDKs. Only the file,
 // resource transport and RPC URL are replaced by local fixtures.
-async function runExample(configuration, fetch) {
+async function runExample(configuration, fetch, { writes = [], logs = [], writeError, recoveryFile = 'ephemeral-recovery.json' } = {}) {
   const source = buildX402BuyerExample(configuration).replace(/^import .*;\n/gm, '');
   const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
   class LocalExactSvmScheme extends ExactSvmScheme {
     constructor(signer) { super(signer, { rpcUrl }); }
   }
-  const execute = new AsyncFunction('x402Client', 'wrapFetchWithPayment', 'ExactSvmScheme', 'createKeyPairSignerFromBytes', 'readFileSync', 'process', 'fetch', 'console', `${source}\nreturn { data, receipt };`);
+  const execute = new AsyncFunction('x402Client', 'wrapFetchWithPayment', 'ExactSvmScheme', 'createKeyPairSignerFromBytes', 'readFileSync', 'writeFileSync', 'process', 'fetch', 'console', `${source}\nreturn { data, receipt };`);
   return execute(x402Client, wrapFetchWithPayment, LocalExactSvmScheme, createKeyPairSignerFromBytes,
     (file, encoding) => { assert.equal(file, 'ephemeral-keypair.json'); assert.equal(encoding, 'utf8'); return JSON.stringify(keyBytes); },
-    { env: { PAYER_KEYPAIR_FILE: 'ephemeral-keypair.json' } }, fetch, { log: () => {} });
+    (file, content, options) => {
+      assert.equal(file, 'ephemeral-recovery.json');
+      assert.deepEqual(options, { encoding: 'utf8', flag: 'wx', mode: 0o600 });
+      if (writeError) throw writeError;
+      const saved = JSON.parse(content);
+      assert.match(saved.token, /^[a-f0-9]{64}$/);
+      assert.equal(saved.url, 'https://secedgarterminal.com/api/x402/v1/delivery');
+      assert.equal(saved.resourceUrl, resourceUrl);
+      writes.push(saved);
+    },
+    { env: { PAYER_KEYPAIR_FILE: 'ephemeral-keypair.json', RECOVERY_FILE: recoveryFile } },
+    async (...args) => { assert.equal(writes.length, 1, 'recovery capability is saved before any request'); return fetch(...args); },
+    { log: value => logs.push(value) });
 }
 
 test('displayed buyer example settles exactly one offline purchase with the genuine pinned fetch SDK', async () => {
   const { state, fetch } = fixture();
-  const result = await runExample({ payTo: recipient.address, network: X402_SOLANA_NETWORK }, fetch);
+  const writes = [], logs = [];
+  const result = await runExample({ payTo: recipient.address, network: X402_SOLANA_NETWORK }, fetch, { writes, logs });
   assert.equal(state.requests, 2);
   assert.equal(state.verifies, 1);
   assert.equal(state.settles, 1);
@@ -97,6 +110,9 @@ test('displayed buyer example settles exactly one offline purchase with the genu
   assert.equal(state.finishes[0].status, 'settled');
   assert.deepEqual(result.data.rows, [{ ticker: 'MOCK' }]);
   assert.equal(JSON.parse(Buffer.from(result.receipt, 'base64').toString()).transaction, mockTransaction);
+  assert.equal(writes.length, 1);
+  assert.ok(logs.every(value => !value.includes(writes[0].token)));
+  assert.match(logs[0], /ephemeral-recovery.json/);
 });
 
 test('displayed buyer example refuses changed recipient and excessive prices before payment authorization', async () => {
@@ -127,4 +143,37 @@ test('displayed buyer example preserves indeterminate errors and never retries w
   };
   await assert.rejects(runExample({ payTo: recipient.address, network: X402_SOLANA_NETWORK }, fetch), /settlement_indeterminate.*mock-payment-hash/);
   assert.equal(requests, 2);
+});
+
+test('displayed buyer example preserves a private saved capability when a settled response body is interrupted', async () => {
+  const { state, fetch } = fixture();
+  const writes = [], logs = [];
+  const interrupted = async request => {
+    assert.equal(request.headers.get('X-X402-Recovery-Token'), writes[0].token);
+    const response = await fetch(request);
+    if (!response.ok) return response;
+    return new Response(new ReadableStream({ start(controller) { controller.error(new Error('Response body interrupted')); } }),
+      { status: response.status, headers: response.headers });
+  };
+  await assert.rejects(runExample({ payTo: recipient.address, network: X402_SOLANA_NETWORK }, interrupted, { writes, logs }), error => {
+    assert.match(error.message, /Response body interrupted/);
+    assert.match(error.message, /ephemeral-recovery.json/);
+    assert.match(error.message, /Do not authorize a replacement payment/);
+    assert.ok(!error.message.includes(writes[0].token));
+    assert.equal(JSON.parse(error.message).status, 200);
+    return true;
+  });
+  assert.equal(writes.length, 1);
+  assert.equal(state.requests, 2);
+  assert.equal(state.settles, 1);
+  assert.equal(state.finishes[0].status, 'settled');
+  assert.equal(logs.length, 0);
+});
+
+test('displayed buyer example never requests or authorizes payment if recovery persistence is missing or cannot create a new file', async () => {
+  let requests = 0;
+  const fetch = async () => { requests++; throw new Error('Must not request payment'); };
+  await assert.rejects(runExample({ payTo: recipient.address, network: X402_SOLANA_NETWORK }, fetch, { recoveryFile: '' }), /RECOVERY_FILE/);
+  await assert.rejects(runExample({ payTo: recipient.address, network: X402_SOLANA_NETWORK }, fetch, { writeError: new Error('EEXIST recovery file already exists') }), /EEXIST/);
+  assert.equal(requests, 0);
 });

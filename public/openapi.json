@@ -1635,7 +1635,7 @@
               "type": "number",
               "minimum": 0,
               "maximum": 1000000000000000,
-              "description": "Minimum reported next-12-month debt in USD."
+              "description": "Minimum reported principal in the first maturity bucket (next fiscal year or rolling twelve months), in USD."
             }
           },
           {
@@ -1646,7 +1646,7 @@
               "type": "number",
               "minimum": 0,
               "maximum": 1000000000000000,
-              "description": "Maximum cash divided by next-12-month debt ratio."
+              "description": "Maximum cash divided by principal in the first maturity bucket (next fiscal year or rolling twelve months)."
             }
           },
           {

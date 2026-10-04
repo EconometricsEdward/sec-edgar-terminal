@@ -90,6 +90,10 @@ test('financial CSV flattens metric-period rows with original definitions and SE
   const text = await response.text();
   assert.match(text, /"sourceReferences"/);
   assert.match(text, /"calculationReferences"/);
+  assert.match(text, /"periodFiscalYear"/);
+  assert.match(text, /"periodAccession"/);
+  assert.match(text, /"observationKind"/);
+  assert.match(text, /"USD","metric-definition-format"/);
   assert.match(text, /sec\.gov/);
   assert.match(text, /edgar\.paid-financial-batch\.v1/);
 });

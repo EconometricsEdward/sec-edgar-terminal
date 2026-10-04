@@ -65,6 +65,22 @@ test('discovery output contracts validate actual prepared-reader responses and r
   }
 });
 
+test('CSV discovery advertises the selected representation and validates with the genuine SDK', () => {
+  for (const id of ['financial-batch', 'fundamental-screen', 'credit-screen']) {
+    const options = x402DiscoveryOptions(id, { format: 'csv' });
+    const extension = bazaarResourceServerExtension.enrichDeclaration(options.extensions.bazaar, {
+      method: 'GET', routePattern: options.routePattern, adapter: { getPath: () => options.routePattern },
+    });
+    assert.deepEqual(validateDiscoveryExtensionSpec(extension), { valid: true });
+    assert.deepEqual(validateDiscoveryExtension(extension), { valid: true });
+    assert.equal(extension.info.input.queryParams.format, 'csv');
+    assert.equal(extension.info.output.type, 'text');
+    assert.equal(extension.schema.properties.output.properties.example.type, 'string');
+    assert.equal(extension.info.output.example, undefined);
+  }
+  assert.throws(() => x402DiscoveryOptions('financials', { format: 'csv' }), /CSV is unavailable/);
+});
+
 test('discovery query schemas reject unsupported fields and preserve endpoint-specific basis restrictions', () => {
   const query = id => new Ajv().compile(x402DiscoveryOptions(id).extensions.bazaar.schema.properties.input.properties.queryParams);
   const financials = query('financials');
