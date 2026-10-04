@@ -1,5 +1,6 @@
 import { createHash, createPrivateKey, randomUUID, sign } from 'node:crypto';
 import { X402_DEPLOYMENT_PAY_TO, X402_DEPLOYMENT_NETWORK } from './x402Deployment.js';
+import { x402RecoveryToken } from './x402RecoveryToken.js';
 
 export const X402_PRICE = '0.01';
 export const X402_AMOUNT = '10000';
@@ -15,8 +16,8 @@ const BASE_HEADERS = {
   'Vercel-CDN-Cache-Control': 'no-store',
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, OPTIONS',
-  'Access-Control-Allow-Headers': 'Accept, Content-Type, PAYMENT-SIGNATURE',
-  'Access-Control-Expose-Headers': 'PAYMENT-REQUIRED, PAYMENT-RESPONSE, EXTENSION-RESPONSES, X-Content-SHA256, X-X402-Price, X-Data-Stale, Link, Retry-After',
+  'Access-Control-Allow-Headers': 'Accept, Content-Type, PAYMENT-SIGNATURE, X-X402-Recovery-Token',
+  'Access-Control-Expose-Headers': 'PAYMENT-REQUIRED, PAYMENT-RESPONSE, EXTENSION-RESPONSES, X-Content-SHA256, X-X402-Price, X-Data-Stale, X-Schema-Version, X-X402-Recovery-Until, X-X402-Recovered, Link, Retry-After',
   'X-Content-Type-Options': 'nosniff',
 };
 
@@ -356,6 +357,13 @@ export function createPaidHandler(handler, options = {}) {
     if (request.method !== 'GET') return x402HeadResponse();
     if (request.url.length > 2048) return errorResponse(414, 'resource_url_too_long');
     if ((request.headers.get('payment-signature') || '').length > MAX_PAYMENT_HEADER_BYTES) return errorResponse(431, 'payment_header_too_large');
+    let recoveryHash;
+    let resourceMimeType;
+    try {
+      recoveryHash = x402RecoveryToken(request);
+      resourceMimeType = typeof options.mimeType === 'function' ? options.mimeType(request) : options.mimeType || 'application/json';
+      if (resourceMimeType !== 'application/json' && !(options.allowCsv === true && resourceMimeType === 'text/csv')) throw new Error('Invalid resource type');
+    } catch { return errorResponse(400, 'invalid_resource_request'); }
     try {
       if (options.validate) {
         const validation = await options.validate(request);
@@ -365,7 +373,8 @@ export function createPaidHandler(handler, options = {}) {
     const config = options.config || getX402Config();
     if (!config.ready) return errorResponse(503, 'payments_not_configured');
     const ledger = options.ledger;
-    if (!ledger || typeof ledger.claim !== 'function' || typeof ledger.finish !== 'function') return errorResponse(503, 'payment_ledger_unavailable');
+    if (!ledger || typeof ledger.claim !== 'function' || typeof ledger.finish !== 'function'
+      || recoveryHash && typeof ledger.stageDelivery !== 'function') return errorResponse(503, 'payment_ledger_unavailable');
     try {
       if (typeof ledger.ready === 'function' && !(await ledger.ready())) return errorResponse(503, 'payment_ledger_unavailable');
     } catch { return errorResponse(503, 'payment_ledger_unavailable'); }
@@ -402,7 +411,7 @@ export function createPaidHandler(handler, options = {}) {
             },
             resource: request.url,
             description: options.description || 'SEC EDGAR Terminal structured financial data',
-            mimeType: 'application/json',
+            mimeType: resourceMimeType,
             ...(options.extensions ? { extensions: options.extensions } : {}),
             ...(options.serviceName ? { serviceName: options.serviceName } : {}),
             ...(options.tags ? { tags: options.tags } : {}),
@@ -465,7 +474,7 @@ export function createPaidHandler(handler, options = {}) {
           if (response.status >= 300 && response.status < 400) return errorResponse(502, 'resource_redirect_not_billable');
           return new Response(response.body, { status: response.status, headers: x402ResponseHeaders(response.headers) });
         }
-        if (response.status === 204 || !response.headers.get('content-type')?.includes('application/json')) throw new Error('Invalid resource content type');
+        if (response.status === 204 || response.headers.get('content-type')?.split(';', 1)[0].trim() !== resourceMimeType) throw new Error('Invalid resource content type');
         const bodyReader = response.body?.getReader();
         const chunks = [];
         let total = 0;
@@ -483,10 +492,20 @@ export function createPaidHandler(handler, options = {}) {
         }
         bytes = Buffer.concat(chunks, total);
         if (!bytes.length) throw new Error('Empty resource');
-        JSON.parse(bytes.toString('utf8'));
+        if (resourceMimeType === 'application/json') JSON.parse(bytes.toString('utf8'));
       } catch {
         await finish('handler_failed', { errorCode: 'resource_unavailable' });
         return errorResponse(502, 'resource_unavailable');
+      }
+
+      let delivery;
+      if (recoveryHash) {
+        try {
+          delivery = await ledger.stageDelivery({ token: claim.token, recoveryHash, bytes, status: response.status, headers: response.headers });
+        } catch {
+          await finish('handler_failed', { errorCode: 'delivery_storage_unavailable' });
+          return errorResponse(503, 'delivery_storage_unavailable', { charged: false });
+        }
       }
 
       let settlement;
@@ -529,6 +548,7 @@ export function createPaidHandler(handler, options = {}) {
       const bazaarOutcome = bazaarOutcomeHeader(settlement);
       if (bazaarOutcome) headers.set('EXTENSION-RESPONSES', bazaarOutcome);
       headers.set('X-Content-SHA256', hash(bytes));
+      if (delivery) headers.set('X-X402-Recovery-Until', delivery.expiresAt);
       return new Response(bytes, { status: response.status, headers });
     } finally {
       permit?.release?.();

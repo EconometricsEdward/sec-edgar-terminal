@@ -4,7 +4,7 @@ import { APPROVED_SEC_CIKS, SUPPORTING_SOURCE_CIKS } from './coverage.js';
 import { DISPOSABLE_CACHE_LIMITS as CACHE_LIMITS, disposableCachePolicy, disposableCacheFencePolicy, disposableCacheFenceResource } from './cachePolicy.js';
 import { DISCLOSURE_INDEX_LIMITS, disclosureIndexIdentity, validDisclosureIndexDocument, validDisclosureIndexSearch } from './disclosurePolicy.js';
 import { isApplicationConflict } from './conflictPolicy.js';
-import { X402_RPC_PARAMETERS, X402_LIMITS, validX402Rpc } from './x402Policy.js';
+import { X402_RPC_PARAMETERS, X402_LIMITS, x402RpcBytes, validX402Rpc } from './x402Policy.js';
 export const TRUST = Object.freeze({
   issuer: 'https://oidc.vercel.com/econometricsedwards-projects',
   audience: 'https://vercel.com/econometricsedwards-projects',
@@ -470,6 +470,17 @@ async function verifyMembershipEvidence(params, signal) {
     .sort((a, b) => a[0].localeCompare(b[0]));
   if (await sha256(encoder.encode(JSON.stringify(issuerIdentity))) !== params.p_snapshot.membershipFingerprint) reject('invalid_membership');
 }
+async function verifyX402Delivery(params, signal) {
+  const delivery = params.p_delivery;
+  let compressed;
+  try { compressed = Uint8Array.from(atob(delivery.gzipBase64), value => value.charCodeAt(0)); }
+  catch { reject('invalid_x402_delivery'); }
+  if (compressed.byteLength > X402_LIMITS.deliveryBytes + 65536 || await sha256(compressed) !== delivery.gzipHash) reject('invalid_x402_delivery');
+  let raw;
+  try { raw = await boundedBytes(new Response(new Blob([compressed]).stream().pipeThrough(new DecompressionStream('gzip'))), X402_LIMITS.deliveryBytes, signal); }
+  catch (error) { if (error instanceof GatewayError) throw error; reject('invalid_x402_delivery'); }
+  if (raw.byteLength !== delivery.rawBytes || await sha256(raw) !== delivery.contentHash) reject('invalid_x402_delivery');
+}
 async function verifyCachePayload(params, signal) {
   let compressed;
   try { compressed = Uint8Array.from(atob(params.p_gzip_base64), value => value.charCodeAt(0)); }
@@ -551,10 +562,11 @@ export function createGateway({ verifyToken, fetchImpl = fetch, env = defaultEnv
       if (rpcMatch && has(RPC_PARAMETERS, rpcMatch[1])) {
         if (request.method !== 'POST') reject('method_denied', 405);
         if (request.headers.get('content-type')?.split(';', 1)[0].trim() !== 'application/json') reject('content_type_denied', 415);
-        const bytes = await boundedBytes(request, x402Operation ? X402_LIMITS.rpcBytes : fundReviewOperation ? FUND_REVIEW_LIMITS.rpcBytes : cacheDataOperation ? CACHE_LIMITS.rpcBytes : RPC_BYTES, controller.signal);
+        const bytes = await boundedBytes(request, x402Operation ? x402RpcBytes(rpcMatch[1]) : fundReviewOperation ? FUND_REVIEW_LIMITS.rpcBytes : cacheDataOperation ? CACHE_LIMITS.rpcBytes : RPC_BYTES, controller.signal);
         let parsed; try { parsed = JSON.parse(decoder.decode(bytes)); } catch { reject('invalid_json', 400); }
         const params = validateRpc(rpcMatch[1], parsed, now());
         if (rpcMatch[1] === 'edgar_stage_membership') await verifyMembershipEvidence(params, controller.signal);
+        if (rpcMatch[1] === 'edgar_x402_stage_delivery') await verifyX402Delivery(params, controller.signal);
         if (['edgar_cache_put', 'edgar_cache_put_fenced'].includes(rpcMatch[1])) await verifyCachePayload(params, controller.signal);
         await admitMembership(params, { fetchImpl, secret, signal: controller.signal });
         body = JSON.stringify(params);
@@ -596,7 +608,7 @@ export function createGateway({ verifyToken, fetchImpl = fetch, env = defaultEnv
         // rejected it once, so this response cannot trigger database retries.
         return json({ code: reviewRevisionChanged ? 'review_revision_changed' : applicationConflict ? '40001' : reviewCapacity ? 'fund_review_capacity' : cacheOverflow ? 'cache_response_too_large' : code === '40001' ? '40001' : 'upstream_failure' }, reviewRevisionChanged || applicationConflict ? 409 : status);
       }
-      const bytes = await boundedBytes(upstream, raw ? OBJECT_BYTES : x402Operation ? X402_LIMITS.rpcBytes : fundReviewOperation ? FUND_REVIEW_LIMITS.rpcBytes : cacheDataOperation ? CACHE_LIMITS.rpcBytes : RPC_BYTES, controller.signal);
+      const bytes = await boundedBytes(upstream, raw ? OBJECT_BYTES : x402Operation ? x402RpcBytes(rpcMatch[1]) : fundReviewOperation ? FUND_REVIEW_LIMITS.rpcBytes : cacheDataOperation ? CACHE_LIMITS.rpcBytes : RPC_BYTES, controller.signal);
       return result(bytes, upstream.status, raw ? 'application/gzip' : 'application/json');
     } catch (error) {
       if (error instanceof GatewayError) return json({ code: error.code }, error.status);

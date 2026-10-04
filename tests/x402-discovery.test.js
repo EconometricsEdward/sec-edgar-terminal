@@ -65,6 +65,22 @@ test('discovery output contracts validate actual prepared-reader responses and r
   }
 });
 
+test('CSV discovery advertises the selected representation and validates with the genuine SDK', () => {
+  for (const id of ['financial-batch', 'fundamental-screen', 'credit-screen']) {
+    const options = x402DiscoveryOptions(id, { format: 'csv' });
+    const extension = bazaarResourceServerExtension.enrichDeclaration(options.extensions.bazaar, {
+      method: 'GET', routePattern: options.routePattern, adapter: { getPath: () => options.routePattern },
+    });
+    assert.deepEqual(validateDiscoveryExtensionSpec(extension), { valid: true });
+    assert.deepEqual(validateDiscoveryExtension(extension), { valid: true });
+    assert.equal(extension.info.input.queryParams.format, 'csv');
+    assert.equal(extension.info.output.type, 'text');
+    assert.equal(extension.schema.properties.output.properties.example.type, 'string');
+    assert.equal(extension.info.output.example, undefined);
+  }
+  assert.throws(() => x402DiscoveryOptions('financials', { format: 'csv' }), /CSV is unavailable/);
+});
+
 test('discovery query schemas reject unsupported fields and preserve endpoint-specific basis restrictions', () => {
   const query = id => new Ajv().compile(x402DiscoveryOptions(id).extensions.bazaar.schema.properties.input.properties.queryParams);
   const financials = query('financials');
@@ -80,12 +96,12 @@ test('discovery query schemas reject unsupported fields and preserve endpoint-sp
   assert.equal(factor({ snapshot: 'abc' }), false);
 });
 
-test('free catalog publishes all three discovery contracts without claiming external directory listing', () => {
+test('free catalog publishes every product discovery contract without claiming external directory listing', () => {
   const catalog = buildX402Catalog({ status: 'active', price: '0.01', currency: 'USDC', network: X402_SOLANA_NETWORK, protocol: 'x402', version: 2 });
   assert.equal(catalog.discovery.extension, 'bazaar');
   assert.equal(catalog.discovery.catalogRegistration, 'facilitator-dependent');
   assert.equal(catalog.discovery.indexing, 'concrete-path');
-  assert.equal(catalog.resources.length, 3);
+  assert.equal(catalog.resources.length, X402_RESOURCES.length);
   for (const resource of catalog.resources) {
     assert.equal(resource.price, '0.01');
     assert.equal(resource.amount, '10000');

@@ -6,6 +6,7 @@ import { usePathname, useSearchParams } from "next/navigation";
 import {
   Activity,
   BarChart3,
+  Database,
   Info,
   FileSearch,
   FileText,
@@ -38,6 +39,7 @@ const ICONS: Record<string, LucideIcon> = {
   about: Info,
   disclosures: FileSearch,
   reports: FileDown,
+  "data-access": Database,
 };
 
 export default function NavTabs() {
