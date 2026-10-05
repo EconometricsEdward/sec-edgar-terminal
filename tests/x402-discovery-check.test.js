@@ -4,32 +4,46 @@ import { createServer } from 'node:http';
 import { generateKeyPairSigner, getBase58Decoder } from '@solana/kit';
 import { TOKEN_PROGRAM_ADDRESS } from '@solana-program/token';
 import { encodePaymentRequiredHeader } from '@x402/core/http';
+import { bazaarResourceServerExtension } from '@x402/extensions/bazaar';
 import { x402DiscoveryOptions } from '../src/utils/x402Discovery.js';
 import { X402_DEPLOYMENT_PAY_TO, X402_DEPLOYMENT_NETWORK } from '../src/utils/x402Deployment.js';
-import { checkDiscovery, createEphemeralPayloadBuilder, DISCOVERY_REQUESTS, guardedDiscoveryFetch, loadLocalKeypairSigner, parseDiscoveryArgs, validateOffer } from '../scripts/check-x402-discovery.mjs';
+import { checkDiscovery, createEphemeralPayloadBuilder, DISCOVERY_REQUESTS, DISCOVERY_RESOURCES, guardedDiscoveryFetch, loadLocalKeypairSigner, parseDiscoveryArgs, validateOffer, validateDiscoveryProbe } from '../scripts/check-x402-discovery.mjs';
 
 const FACILITATOR = 'https://facilitator.payai.network';
 const MINT = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
 const feePayer = await generateKeyPairSigner();
 const offers = DISCOVERY_REQUESTS.map((url, i) => {
   const { extensions, ...metadata } = x402DiscoveryOptions(['financials', 'factor-universe', 'refinancing', 'financial-batch', 'fundamental-screen', 'credit-screen', 'financial-changes', 'disclosure-evidence', 'institutional-overlap', 'disclosure-topic-packet', 'bank-risk-batch'][i]);
+  extensions.bazaar = bazaarResourceServerExtension.enrichDeclaration(extensions.bazaar, {
+    method: 'GET', routePattern: metadata.routePattern, adapter: { getPath: () => new URL(url).pathname },
+  });
+  if (metadata.omitDiscoveryRouteTemplate) delete extensions.bazaar.routeTemplate;
+  delete metadata.omitDiscoveryRouteTemplate;
   delete metadata.routePattern;
-  extensions.bazaar.info.input.method = 'GET';
   return { x402Version: 2, resource: { url, description: 'Prepared SEC research', mimeType: 'application/json', ...metadata }, extensions,
     accepts: [{ scheme: 'exact', network: X402_DEPLOYMENT_NETWORK, asset: MINT, amount: '10000', payTo: X402_DEPLOYMENT_PAY_TO, maxTimeoutSeconds: 60, extra: { feePayer: feePayer.address } }],
   };
 });
 
-function transport({ register = false, altered = false } = {}) {
+function transport({ register = false, altered = false, probeStatus = 402, alterProbe } = {}) {
   const calls = [];
   return { calls, fetch: async (url, init) => {
     calls.push({ url, method: init.method });
     assert.equal(init.redirect, 'error');
     assert.equal(new Headers(init.headers).has('PAYMENT-SIGNATURE'), false);
     if (DISCOVERY_REQUESTS.includes(url)) {
+      assert.equal(init.method, 'GET');
       const offer = structuredClone(offers[DISCOVERY_REQUESTS.indexOf(url)]);
       if (altered) offer.accepts[0].amount = '20000';
       return new Response('', { status: 402, headers: { 'PAYMENT-REQUIRED': encodePaymentRequiredHeader(offer) } });
+    }
+    if (DISCOVERY_RESOURCES.includes(url)) {
+      assert.equal(init.method, 'HEAD');
+      assert.equal(init.body, undefined);
+      const offer = structuredClone(offers[DISCOVERY_RESOURCES.indexOf(url)]);
+      offer.resource.url = url;
+      alterProbe?.(offer);
+      return new Response(null, { status: probeStatus, headers: { 'PAYMENT-REQUIRED': encodePaymentRequiredHeader(offer) } });
     }
     if (url === `${FACILITATOR}/verify`) {
       assert.equal(register, true);
@@ -51,12 +65,16 @@ function transport({ register = false, altered = false } = {}) {
 test('discovery audit is read-only by default and distinguishes valid offers from unlisted resources', async () => {
   const mock = transport();
   const result = await checkDiscovery({ fetchImpl: mock.fetch, createPayload: () => { throw new Error('Read-only mode must not generate payment payloads'); } });
-  assert.equal(mock.calls.length, DISCOVERY_REQUESTS.length * 2 + 1);
-  assert.ok(mock.calls.every(call => call.method === 'GET'));
+  assert.equal(mock.calls.length, DISCOVERY_REQUESTS.length * 3 + 1);
+  assert.deepEqual(mock.calls.slice(0, DISCOVERY_REQUESTS.length).map(call => call.method), DISCOVERY_REQUESTS.map(() => 'GET'));
+  assert.deepEqual(mock.calls.slice(DISCOVERY_REQUESTS.length, DISCOVERY_REQUESTS.length * 2), DISCOVERY_RESOURCES.map(url => ({ url, method: 'HEAD' })));
+  assert.ok(mock.calls.slice(DISCOVERY_REQUESTS.length * 2).every(call => call.method === 'GET'));
   assert.equal(result.resources.length, DISCOVERY_REQUESTS.length);
   assert.equal(result.resources[0].resource, 'https://secedgarterminal.com/api/x402/v1/financials/AAPL');
   assert.equal(result.resources[1].resource, 'https://secedgarterminal.com/api/x402/v1/factor-universe');
   assert.ok(result.resources.every(resource => !resource.listing.listed));
+  assert.ok(result.resources.every(resource => resource.probe.method === 'HEAD' && resource.probe.httpStatus === 402 && resource.probe.offer === 'valid' && resource.probe.purchaseMethod === 'GET'));
+  assert.doesNotMatch(JSON.stringify(result), /transaction|signature|keyPair|PAYMENT-REQUIRED/);
   assert.equal(result.catalog.totalForWallet, 0);
 });
 
@@ -117,13 +135,99 @@ test('discovery transport rejects settlement, signed seller retries, credentials
     [`${FACILITATOR}/settle`, { method: 'POST', body: '{}' }],
     [DISCOVERY_REQUESTS[0], { headers: { 'PAYMENT-SIGNATURE': 'signed' } }],
     [DISCOVERY_REQUESTS[0], { headers: { Authorization: 'secret' } }],
+    [DISCOVERY_RESOURCES[0], { method: 'HEAD', headers: { 'X-PAYMENT': 'signed' } }],
+    [DISCOVERY_RESOURCES[0], { method: 'HEAD', headers: { 'X-X402-Recovery-Token': 'delivery-proof' } }],
+    [DISCOVERY_RESOURCES[0], { method: 'HEAD', headers: { Authorization: 'secret' } }],
+    [DISCOVERY_RESOURCES[0], { method: 'HEAD', headers: { Cookie: 'credential' } }],
     [DISCOVERY_REQUESTS[0], { method: 'POST', body: '{}' }],
+    [DISCOVERY_REQUESTS[0], { method: 'HEAD' }],
+    [DISCOVERY_RESOURCES[0], { method: 'GET' }],
+    [DISCOVERY_RESOURCES[0], { method: 'HEAD', body: '{}' }],
+    [`${DISCOVERY_RESOURCES[0]}?basis=annual&format=csv`, { method: 'HEAD' }],
+    ['https://secedgarterminal.com/api/x402/v1/financials/MSFT', { method: 'HEAD' }],
+    [`${FACILITATOR}/verify`, { method: 'HEAD' }],
+    [`${FACILITATOR}/discovery/resources`, { method: 'HEAD' }],
     ['https://example.com/verify', { method: 'POST', body: '{}' }],
     [`${FACILITATOR}/verify`, { method: 'POST', body: '{}' }],
   ]) await assert.rejects(safe(url, init));
   assert.equal(forwarded, 0);
   await assert.rejects(guardedDiscoveryFetch(() => { forwarded++; })(`${FACILITATOR}/verify`, { method: 'POST', body: '{}' }));
   assert.equal(forwarded, 0);
+});
+
+test('discovery transport permits only fixed query-free seller HEAD probes and preserves the HEAD method', async () => {
+  const forwarded = [];
+  const safe = guardedDiscoveryFetch(async (url, init) => {
+    forwarded.push({ url, method: init.method, body: init.body, redirect: init.redirect });
+    return new Response(null, { status: 402 });
+  });
+  for (const resource of DISCOVERY_RESOURCES) await safe(resource, { method: 'head' });
+  assert.deepEqual(forwarded, DISCOVERY_RESOURCES.map(url => ({ url, method: 'HEAD', body: undefined, redirect: 'error' })));
+});
+
+test('registration refuses every unavailable HEAD probe before loading a keypair, signing or verification', async () => {
+  for (const probeStatus of [405, 503]) {
+    let payloads = 0;
+    const mock = transport({ register: true, probeStatus });
+    await assert.rejects(checkDiscovery({ register: true, keypairPath: '/unreadable/buyer.json', fetchImpl: mock.fetch }), new RegExp(`Expected unpaid HEAD HTTP 402.*received ${probeStatus}`));
+    assert.equal(mock.calls.length, DISCOVERY_REQUESTS.length + 1);
+    assert.ok(mock.calls.every(call => call.method !== 'POST'));
+    const injectedMock = transport({ register: true, probeStatus });
+    await assert.rejects(checkDiscovery({ register: true, fetchImpl: injectedMock.fetch, createPayload: () => { payloads++; throw new Error('Must not sign'); } }), /Expected unpaid HEAD HTTP 402/);
+    assert.equal(payloads, 0);
+  }
+});
+
+test('registration refuses changed HEAD terms, URL, service metadata, GET method or schemas before signing', async () => {
+  const mutations = [
+    offer => { offer.accepts[0].amount = '20000'; },
+    offer => { offer.accepts[0].payTo = feePayer.address; },
+    offer => { offer.accepts[0].network = 'solana:devnet'; },
+    offer => { offer.accepts[0].asset = feePayer.address; },
+    offer => { offer.accepts[0].scheme = 'upto'; },
+    offer => { offer.x402Version = 1; },
+    offer => { offer.resource.url += '?basis=annual'; },
+    offer => { offer.resource.serviceName = 'Untrusted seller'; },
+    offer => { offer.resource.tags = ['unrelated']; },
+    offer => { offer.resource.mimeType = 'text/csv'; },
+    offer => { offer.resource.iconUrl = 'https://example.com/favicon.svg'; },
+    offer => { offer.extensions.bazaar.info.input.method = 'HEAD'; },
+    offer => { offer.extensions.bazaar.schema.properties.input.properties.queryParams = { type: 'object' }; },
+    offer => { offer.extensions.bazaar.schema.properties.output.properties.example = { type: 'object' }; },
+    offer => { offer.payload = { transaction: 'must-not-be-sent' }; },
+  ];
+  for (const alterProbe of mutations) {
+    let payloads = 0;
+    const mock = transport({ register: true, alterProbe });
+    await assert.rejects(checkDiscovery({ register: true, fetchImpl: mock.fetch, createPayload: () => { payloads++; throw new Error('Must not sign'); } }));
+    assert.equal(payloads, 0);
+    assert.ok(mock.calls.every(call => call.method !== 'POST'));
+  }
+});
+
+test('the last HEAD probe must validate too and a missing header stops read-only and keypair audits', async () => {
+  for (const register of [false, true]) {
+    const mock = transport({ register });
+    const fetchImpl = async (url, init) => {
+      const response = await mock.fetch(url, init);
+      if (url === DISCOVERY_RESOURCES.at(-1)) response.headers.delete('PAYMENT-REQUIRED');
+      return response;
+    };
+    await assert.rejects(checkDiscovery({ register, ...(register ? { keypairPath: '/unreadable/buyer.json' } : {}), fetchImpl }), /Missing HEAD PAYMENT-REQUIRED header/);
+    assert.equal(mock.calls.length, DISCOVERY_REQUESTS.length * 2);
+    assert.ok(mock.calls.every(call => call.method !== 'POST'));
+  }
+});
+
+test('probe contracts stay distinct from query-bearing purchase offers and verify cannot register a bare URL', async () => {
+  const offer = structuredClone(offers[0]);
+  offer.resource.url = DISCOVERY_RESOURCES[0];
+  assert.equal(validateDiscoveryProbe(offer, DISCOVERY_RESOURCES[0]), DISCOVERY_RESOURCES[0]);
+  assert.throws(() => validateOffer(offer, DISCOVERY_RESOURCES[0]), /Unexpected payment resource/);
+  assert.throws(() => validateDiscoveryProbe(offers[0], DISCOVERY_REQUESTS[0]), /Unexpected payment resource/);
+  const safe = guardedDiscoveryFetch(() => { throw new Error('Must not forward'); }, { register: true });
+  const paymentPayload = { x402Version: 2, resource: offer.resource, extensions: offer.extensions, accepted: offer.accepts[0], payload: { transaction: 'signed-placeholder' } };
+  await assert.rejects(safe(`${FACILITATOR}/verify`, { method: 'POST', body: JSON.stringify({ x402Version: 2, paymentPayload, paymentRequirements: offer.accepts[0] }) }), /Unexpected payment resource/);
 });
 
 test('registration refuses changed payment terms before generating a signer or contacting verify', async () => {

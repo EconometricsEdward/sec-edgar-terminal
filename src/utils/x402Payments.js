@@ -310,12 +310,8 @@ export async function createX402FacilitatorClient(config, fetchImpl = fetch) {
   };
 }
 
-/**
- * A GET purchase is one successful, bounded JSON resource. Verification precedes
- * work; durable reservation precedes settlement; settlement precedes delivery.
- * SDK/facilitator loading is lazy, so discovery and configuration pages stay cheap.
- */
-export function createPaidHandler(handler, options = {}) {
+/** Shared lazy SDK initialization; capability reads never verify or settle. */
+function createX402ServerLoader(options) {
   let serverPromise;
   let previousConfig;
   let failedUntil = 0;
@@ -351,6 +347,89 @@ export function createPaidHandler(handler, options = {}) {
     }
     return serverPromise;
   };
+  return getServer;
+}
+
+/**
+ * Support Bazaar's HEAD probes at query-free canonical resource URLs.
+ * Advertise that GET contract without pretending a selector-free GET is valid,
+ * reading research, or creating/consuming a buyer authorization. Paid GET
+ * validation and its exact resource URL binding remain in createPaidHandler.
+ */
+export function createX402DiscoveryHead(options = {}) {
+  const getServer = createX402ServerLoader(options);
+  const respond = (status, sourceHeaders) => {
+    const headers = x402ResponseHeaders(sourceHeaders);
+    headers.set('Allow', 'GET, HEAD, OPTIONS');
+    headers.set('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS');
+    headers.set('Link', '</data-access>; rel="help", </openapi.json>; rel="service-desc"');
+    headers.delete('Content-Length');
+    headers.delete('Content-Encoding');
+    headers.delete('Transfer-Encoding');
+    return new Response(null, { status, headers });
+  };
+
+  return async function discoveryHEAD(request, ...handlerArgs) {
+    if (request.method !== 'HEAD') return respond(405);
+    if (request.url.length > 2048) return respond(414);
+    // Presence, including empty or duplicate values, is forbidden. Even a valid
+    // buyer proof must never reach SDK payment extraction on a discovery probe.
+    if (['PAYMENT-SIGNATURE', 'X-PAYMENT', 'X-X402-Recovery-Token', 'Authorization'].some(name => request.headers.has(name))) return respond(400);
+    let resourceMimeType;
+    try {
+      if (options.validate) {
+        const validation = await options.validate(request, ...handlerArgs);
+        if (validation instanceof Response) return respond(validation.status, validation.headers);
+      }
+      resourceMimeType = typeof options.mimeType === 'function' ? options.mimeType(request) : options.mimeType || 'application/json';
+      if (resourceMimeType !== 'application/json' && !(options.allowCsv === true && resourceMimeType === 'text/csv')) throw new Error('Invalid resource type');
+    } catch { return respond(400); }
+    const config = options.config || getX402Config();
+    if (!config.ready) return respond(503);
+    if (config.requireRecipientReady) {
+      try {
+        const recipientCheck = options.recipientCheck || (await import('./x402SolanaRecipient.js')).checkX402Recipient;
+        if (!(await recipientCheck(config)).ready) return respond(503);
+      } catch { return respond(503); }
+    }
+    try {
+      const original = requestContext(request);
+      // HEAD describes the declared GET representation. The genuine SDK must
+      // enrich method and path parameters as GET, not index a HEAD purchase.
+      const context = { ...original, method: 'GET', adapter: { ...original.adapter, getMethod: () => 'GET' } };
+      const { resourceServer, x402HTTPResourceServer } = await getServer(config);
+      const httpServer = new x402HTTPResourceServer(resourceServer, {
+        [`GET ${options.routePattern || context.path}`]: {
+          accepts: {
+            scheme: 'exact', network: config.network, payTo: config.payTo,
+            price: { amount: X402_AMOUNT, asset: config.asset }, maxTimeoutSeconds: 60,
+            extra: { paymentFlow: 'authorization' },
+          },
+          resource: request.url,
+          description: options.description || 'SEC EDGAR Terminal structured financial data',
+          mimeType: resourceMimeType,
+          ...(options.extensions ? { extensions: options.extensions } : {}),
+          ...(options.serviceName ? { serviceName: options.serviceName } : {}),
+          ...(options.tags ? { tags: options.tags } : {}),
+          ...(options.iconUrl ? { iconUrl: options.iconUrl } : {}),
+          unpaidResponseBody: () => ({ contentType: 'application/json', body: { error: 'payment_required', price: X402_PRICE, currency: 'USDC' } }),
+        },
+      });
+      if (!httpServer.requiresPayment(context)) return respond(503);
+      const result = await httpServer.processHTTPRequest(context);
+      if (result.type !== 'payment-error' || result.response.status !== 402 || !result.response.headers['PAYMENT-REQUIRED']) return respond(503);
+      return respond(402, result.response.headers);
+    } catch { return respond(503); }
+  };
+}
+
+/**
+ * A GET purchase is one successful, bounded JSON resource. Verification precedes
+ * work; durable reservation precedes settlement; settlement precedes delivery.
+ * SDK/facilitator loading is lazy, so discovery and configuration pages stay cheap.
+ */
+export function createPaidHandler(handler, options = {}) {
+  const getServer = createX402ServerLoader(options);
 
   return async function paidGET(request, ...handlerArgs) {
     if (request.method === 'OPTIONS') return x402OptionsResponse();

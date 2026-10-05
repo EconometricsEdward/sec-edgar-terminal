@@ -1,7 +1,7 @@
-import { createPaidHandler } from '../../../../../utils/x402Payments.js';
+import { createPaidHandler, createX402DiscoveryHead } from '../../../../../utils/x402Payments.js';
 import { x402Ledger } from '../../../../../utils/x402Ledger.js';
 import { x402DiscoveryOptions } from '../../../../../utils/x402Discovery.js';
-import { paidResearchReaders, paidResearchSelection, x402DataError, x402DataOptions, x402DataHead } from '../../../../../utils/x402Research.js';
+import { paidResearchReaders, paidResearchSelection, x402DataError, x402DataOptions } from '../../../../../utils/x402Research.js';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -17,4 +17,9 @@ export function GET(request) {
   return paidGet(request, { selection });
 }
 export const OPTIONS = x402DataOptions;
-export const HEAD = x402DataHead;
+export const HEAD = createX402DiscoveryHead({
+  description: 'Unpaid discovery metadata for this prepared GET product.',
+  ...x402DiscoveryOptions('factor-universe'),
+  validate: request => paidResearchSelection(request, 'factor-universe') ? null
+    : x402DataError('INVALID_SELECTION', 'Use the documented GET parameters. See /data-access and /openapi.json.'),
+});

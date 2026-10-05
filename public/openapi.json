@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "EDGAR Terminal Research and x402 Data APIs",
-    "version": "2.5.0",
+    "version": "2.5.1",
     "description": "Free public research APIs and eleven paid machine products, including company disclosure topic packets and same-quarter legal-bank capital, credit and funding batches. Paid GETs cost 0.01 USDC on Solana. Evidence, bank, batch and screen products support JSON/CSV. Public research remains free. Five products provide free prepared-coverage checks through /api/x402/availability. Optional exact-response recovery lasts 24 hours after staging."
   },
   "servers": [
@@ -827,24 +827,29 @@
         }
       },
       "head": {
-        "tags": [
-          "Paid x402 data"
-        ],
-        "summary": "HEAD is not supported and never settles payment",
-        "security": [],
-        "parameters": [
-          {
-            "name": "ticker",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
+        "summary": "Inspect unpaid GET discovery metadata",
+        "description": "A bodyless, nonsettling discovery challenge for this GET product. Bare paths advertise required GET selectors for catalog admission; query-bearing probes preserve the documented GET selector validation and JSON/CSV format. HEAD does not read prepared data, verify buyer proofs, settle payments or recover deliveries. Payment, authorization and recovery credentials are rejected. A challenge confirms payment configuration, not prepared-data availability.",
+        "operationId": "undefinedDiscoveryHead",
         "responses": {
+          "400": {
+            "description": "Credentials or invalid query-bearing selectors were rejected; no payment offer."
+          },
+          "402": {
+            "description": "Bodyless unpaid GET payment/discovery challenge. PAYMENT-REQUIRED describes the GET contract; no funds moved.",
+            "headers": {
+              "PAYMENT-REQUIRED": {
+                "description": "Base64-encoded x402 v2 GET requirements and Bazaar declaration.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
           "405": {
-            "$ref": "#/components/responses/X402MethodNotAllowed"
+            "description": "This handler only supports HEAD."
+          },
+          "503": {
+            "description": "Payment configuration, recipient readiness or facilitator support is unavailable."
           }
         }
       }
@@ -972,14 +977,29 @@
         }
       },
       "head": {
-        "tags": [
-          "Paid x402 data"
-        ],
-        "summary": "HEAD is not supported and never settles payment",
-        "security": [],
+        "summary": "Inspect unpaid GET discovery metadata",
+        "description": "A bodyless, nonsettling discovery challenge for this GET product. Bare paths advertise required GET selectors for catalog admission; query-bearing probes preserve the documented GET selector validation and JSON/CSV format. HEAD does not read prepared data, verify buyer proofs, settle payments or recover deliveries. Payment, authorization and recovery credentials are rejected. A challenge confirms payment configuration, not prepared-data availability.",
+        "operationId": "undefinedDiscoveryHead",
         "responses": {
+          "400": {
+            "description": "Credentials or invalid query-bearing selectors were rejected; no payment offer."
+          },
+          "402": {
+            "description": "Bodyless unpaid GET payment/discovery challenge. PAYMENT-REQUIRED describes the GET contract; no funds moved.",
+            "headers": {
+              "PAYMENT-REQUIRED": {
+                "description": "Base64-encoded x402 v2 GET requirements and Bazaar declaration.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
           "405": {
-            "$ref": "#/components/responses/X402MethodNotAllowed"
+            "description": "This handler only supports HEAD."
+          },
+          "503": {
+            "description": "Payment configuration, recipient readiness or facilitator support is unavailable."
           }
         }
       }
@@ -1119,14 +1139,29 @@
         }
       },
       "head": {
-        "tags": [
-          "Paid x402 data"
-        ],
-        "summary": "HEAD is not supported and never settles payment",
-        "security": [],
+        "summary": "Inspect unpaid GET discovery metadata",
+        "description": "A bodyless, nonsettling discovery challenge for this GET product. Bare paths advertise required GET selectors for catalog admission; query-bearing probes preserve the documented GET selector validation and JSON/CSV format. HEAD does not read prepared data, verify buyer proofs, settle payments or recover deliveries. Payment, authorization and recovery credentials are rejected. A challenge confirms payment configuration, not prepared-data availability.",
+        "operationId": "undefinedDiscoveryHead",
         "responses": {
+          "400": {
+            "description": "Credentials or invalid query-bearing selectors were rejected; no payment offer."
+          },
+          "402": {
+            "description": "Bodyless unpaid GET payment/discovery challenge. PAYMENT-REQUIRED describes the GET contract; no funds moved.",
+            "headers": {
+              "PAYMENT-REQUIRED": {
+                "description": "Base64-encoded x402 v2 GET requirements and Bazaar declaration.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
           "405": {
-            "$ref": "#/components/responses/X402MethodNotAllowed"
+            "description": "This handler only supports HEAD."
+          },
+          "503": {
+            "description": "Payment configuration, recipient readiness or facilitator support is unavailable."
           }
         }
       }
@@ -1282,14 +1317,29 @@
         "operationId": "readPaidFinancialBatch"
       },
       "head": {
-        "tags": [
-          "Paid x402 data"
-        ],
-        "summary": "HEAD is not supported and never settles payment",
-        "security": [],
+        "summary": "Inspect unpaid GET discovery metadata",
+        "description": "A bodyless, nonsettling discovery challenge for this GET product. Bare paths advertise required GET selectors for catalog admission; query-bearing probes preserve the documented GET selector validation and JSON/CSV format. HEAD does not read prepared data, verify buyer proofs, settle payments or recover deliveries. Payment, authorization and recovery credentials are rejected. A challenge confirms payment configuration, not prepared-data availability.",
+        "operationId": "readPaidFinancialBatchDiscoveryHead",
         "responses": {
+          "400": {
+            "description": "Credentials or invalid query-bearing selectors were rejected; no payment offer."
+          },
+          "402": {
+            "description": "Bodyless unpaid GET payment/discovery challenge. PAYMENT-REQUIRED describes the GET contract; no funds moved.",
+            "headers": {
+              "PAYMENT-REQUIRED": {
+                "description": "Base64-encoded x402 v2 GET requirements and Bazaar declaration.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
           "405": {
-            "$ref": "#/components/responses/X402MethodNotAllowed"
+            "description": "This handler only supports HEAD."
+          },
+          "503": {
+            "description": "Payment configuration, recipient readiness or facilitator support is unavailable."
           }
         }
       }
@@ -1567,14 +1617,29 @@
         "operationId": "readPaidFundamentalScreen"
       },
       "head": {
-        "tags": [
-          "Paid x402 data"
-        ],
-        "summary": "HEAD is not supported and never settles payment",
-        "security": [],
+        "summary": "Inspect unpaid GET discovery metadata",
+        "description": "A bodyless, nonsettling discovery challenge for this GET product. Bare paths advertise required GET selectors for catalog admission; query-bearing probes preserve the documented GET selector validation and JSON/CSV format. HEAD does not read prepared data, verify buyer proofs, settle payments or recover deliveries. Payment, authorization and recovery credentials are rejected. A challenge confirms payment configuration, not prepared-data availability.",
+        "operationId": "readPaidFundamentalScreenDiscoveryHead",
         "responses": {
+          "400": {
+            "description": "Credentials or invalid query-bearing selectors were rejected; no payment offer."
+          },
+          "402": {
+            "description": "Bodyless unpaid GET payment/discovery challenge. PAYMENT-REQUIRED describes the GET contract; no funds moved.",
+            "headers": {
+              "PAYMENT-REQUIRED": {
+                "description": "Base64-encoded x402 v2 GET requirements and Bazaar declaration.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
           "405": {
-            "$ref": "#/components/responses/X402MethodNotAllowed"
+            "description": "This handler only supports HEAD."
+          },
+          "503": {
+            "description": "Payment configuration, recipient readiness or facilitator support is unavailable."
           }
         }
       }
@@ -1821,14 +1886,29 @@
         "operationId": "readPaidCreditScreen"
       },
       "head": {
-        "tags": [
-          "Paid x402 data"
-        ],
-        "summary": "HEAD is not supported and never settles payment",
-        "security": [],
+        "summary": "Inspect unpaid GET discovery metadata",
+        "description": "A bodyless, nonsettling discovery challenge for this GET product. Bare paths advertise required GET selectors for catalog admission; query-bearing probes preserve the documented GET selector validation and JSON/CSV format. HEAD does not read prepared data, verify buyer proofs, settle payments or recover deliveries. Payment, authorization and recovery credentials are rejected. A challenge confirms payment configuration, not prepared-data availability.",
+        "operationId": "readPaidCreditScreenDiscoveryHead",
         "responses": {
+          "400": {
+            "description": "Credentials or invalid query-bearing selectors were rejected; no payment offer."
+          },
+          "402": {
+            "description": "Bodyless unpaid GET payment/discovery challenge. PAYMENT-REQUIRED describes the GET contract; no funds moved.",
+            "headers": {
+              "PAYMENT-REQUIRED": {
+                "description": "Base64-encoded x402 v2 GET requirements and Bazaar declaration.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
           "405": {
-            "$ref": "#/components/responses/X402MethodNotAllowed"
+            "description": "This handler only supports HEAD."
+          },
+          "503": {
+            "description": "Payment configuration, recipient readiness or facilitator support is unavailable."
           }
         }
       }
@@ -2065,14 +2145,29 @@
         "operationId": "readPaidFinancialChanges"
       },
       "head": {
-        "tags": [
-          "Paid x402 data"
-        ],
-        "summary": "HEAD is not supported and never settles payment",
-        "security": [],
+        "summary": "Inspect unpaid GET discovery metadata",
+        "description": "A bodyless, nonsettling discovery challenge for this GET product. Bare paths advertise required GET selectors for catalog admission; query-bearing probes preserve the documented GET selector validation and JSON/CSV format. HEAD does not read prepared data, verify buyer proofs, settle payments or recover deliveries. Payment, authorization and recovery credentials are rejected. A challenge confirms payment configuration, not prepared-data availability.",
+        "operationId": "readPaidFinancialChangesDiscoveryHead",
         "responses": {
+          "400": {
+            "description": "Credentials or invalid query-bearing selectors were rejected; no payment offer."
+          },
+          "402": {
+            "description": "Bodyless unpaid GET payment/discovery challenge. PAYMENT-REQUIRED describes the GET contract; no funds moved.",
+            "headers": {
+              "PAYMENT-REQUIRED": {
+                "description": "Base64-encoded x402 v2 GET requirements and Bazaar declaration.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
           "405": {
-            "$ref": "#/components/responses/X402MethodNotAllowed"
+            "description": "This handler only supports HEAD."
+          },
+          "503": {
+            "description": "Payment configuration, recipient readiness or facilitator support is unavailable."
           }
         }
       }
@@ -2283,14 +2378,29 @@
         "operationId": "readPaidDisclosureEvidence"
       },
       "head": {
-        "tags": [
-          "Paid x402 data"
-        ],
-        "summary": "HEAD is not supported and never settles payment",
-        "security": [],
+        "summary": "Inspect unpaid GET discovery metadata",
+        "description": "A bodyless, nonsettling discovery challenge for this GET product. Bare paths advertise required GET selectors for catalog admission; query-bearing probes preserve the documented GET selector validation and JSON/CSV format. HEAD does not read prepared data, verify buyer proofs, settle payments or recover deliveries. Payment, authorization and recovery credentials are rejected. A challenge confirms payment configuration, not prepared-data availability.",
+        "operationId": "readPaidDisclosureEvidenceDiscoveryHead",
         "responses": {
+          "400": {
+            "description": "Credentials or invalid query-bearing selectors were rejected; no payment offer."
+          },
+          "402": {
+            "description": "Bodyless unpaid GET payment/discovery challenge. PAYMENT-REQUIRED describes the GET contract; no funds moved.",
+            "headers": {
+              "PAYMENT-REQUIRED": {
+                "description": "Base64-encoded x402 v2 GET requirements and Bazaar declaration.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
           "405": {
-            "$ref": "#/components/responses/X402MethodNotAllowed"
+            "description": "This handler only supports HEAD."
+          },
+          "503": {
+            "description": "Payment configuration, recipient readiness or facilitator support is unavailable."
           }
         }
       }
@@ -2508,14 +2618,29 @@
         "operationId": "readPaidInstitutionalOverlap"
       },
       "head": {
-        "tags": [
-          "Paid x402 data"
-        ],
-        "summary": "HEAD is not supported and never settles payment",
-        "security": [],
+        "summary": "Inspect unpaid GET discovery metadata",
+        "description": "A bodyless, nonsettling discovery challenge for this GET product. Bare paths advertise required GET selectors for catalog admission; query-bearing probes preserve the documented GET selector validation and JSON/CSV format. HEAD does not read prepared data, verify buyer proofs, settle payments or recover deliveries. Payment, authorization and recovery credentials are rejected. A challenge confirms payment configuration, not prepared-data availability.",
+        "operationId": "readPaidInstitutionalOverlapDiscoveryHead",
         "responses": {
+          "400": {
+            "description": "Credentials or invalid query-bearing selectors were rejected; no payment offer."
+          },
+          "402": {
+            "description": "Bodyless unpaid GET payment/discovery challenge. PAYMENT-REQUIRED describes the GET contract; no funds moved.",
+            "headers": {
+              "PAYMENT-REQUIRED": {
+                "description": "Base64-encoded x402 v2 GET requirements and Bazaar declaration.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
           "405": {
-            "$ref": "#/components/responses/X402MethodNotAllowed"
+            "description": "This handler only supports HEAD."
+          },
+          "503": {
+            "description": "Payment configuration, recipient readiness or facilitator support is unavailable."
           }
         }
       }
@@ -2527,7 +2652,7 @@
           "Paid x402 data"
         ],
         "summary": "Check prepared evidence-product coverage free before authorizing payment",
-        "description": "Free bounded prepared-data checks for the five listed products. Use the selected product’s exact query contract; parameters belonging to another product are rejected. Returns only readiness, stale status, result count and an optional stable packet fingerprint, never paid quotes or metric rows. Successful summaries can be reused for up to thirty seconds per runtime, capped at ninety-six summaries; checkedAt remains the original reader check time. Concurrent identical selections share one reader. Actual reader starts are limited to four concurrent and thirty per minute per runtime. Coverage can change before purchase; readiness is not a reservation. Do not send payment or recovery headers.",
+        "description": "Free bounded prepared-data checks for the five listed products. Use the selected product’s exact query contract; parameters belonging to another product are rejected. Returns only readiness, stale status, result count and an optional stable packet fingerprint, never paid quotes or metric rows. Successful summaries can be reused for up to thirty seconds per runtime, capped at ninety-six summaries; checkedAt remains the original reader check time. Concurrent identical selections share one reader. Actual reader starts are limited to four concurrent and thirty per minute per runtime. Coverage can change before purchase; readiness is not a reservation. Do not send payment or recovery headers. HEAD discovery challenges on paid routes do not check prepared coverage; use this free endpoint to check supported product selections.",
         "parameters": [
           {
             "name": "product",
@@ -3166,6 +3291,33 @@
           }
         },
         "operationId": "readPaidDisclosureTopicPacket"
+      },
+      "head": {
+        "summary": "Inspect unpaid GET discovery metadata",
+        "description": "A bodyless, nonsettling discovery challenge for this GET product. Bare paths advertise required GET selectors for catalog admission; query-bearing probes preserve the documented GET selector validation and JSON/CSV format. HEAD does not read prepared data, verify buyer proofs, settle payments or recover deliveries. Payment, authorization and recovery credentials are rejected. A challenge confirms payment configuration, not prepared-data availability.",
+        "operationId": "readPaidDisclosureTopicPacketDiscoveryHead",
+        "responses": {
+          "400": {
+            "description": "Credentials or invalid query-bearing selectors were rejected; no payment offer."
+          },
+          "402": {
+            "description": "Bodyless unpaid GET payment/discovery challenge. PAYMENT-REQUIRED describes the GET contract; no funds moved.",
+            "headers": {
+              "PAYMENT-REQUIRED": {
+                "description": "Base64-encoded x402 v2 GET requirements and Bazaar declaration.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "405": {
+            "description": "This handler only supports HEAD."
+          },
+          "503": {
+            "description": "Payment configuration, recipient readiness or facilitator support is unavailable."
+          }
+        }
       }
     },
     "/api/x402/v1/bank-risk-batch": {
@@ -3376,6 +3528,33 @@
           }
         },
         "operationId": "readPaidBankRiskBatch"
+      },
+      "head": {
+        "summary": "Inspect unpaid GET discovery metadata",
+        "description": "A bodyless, nonsettling discovery challenge for this GET product. Bare paths advertise required GET selectors for catalog admission; query-bearing probes preserve the documented GET selector validation and JSON/CSV format. HEAD does not read prepared data, verify buyer proofs, settle payments or recover deliveries. Payment, authorization and recovery credentials are rejected. A challenge confirms payment configuration, not prepared-data availability.",
+        "operationId": "readPaidBankRiskBatchDiscoveryHead",
+        "responses": {
+          "400": {
+            "description": "Credentials or invalid query-bearing selectors were rejected; no payment offer."
+          },
+          "402": {
+            "description": "Bodyless unpaid GET payment/discovery challenge. PAYMENT-REQUIRED describes the GET contract; no funds moved.",
+            "headers": {
+              "PAYMENT-REQUIRED": {
+                "description": "Base64-encoded x402 v2 GET requirements and Bazaar declaration.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "405": {
+            "description": "This handler only supports HEAD."
+          },
+          "503": {
+            "description": "Payment configuration, recipient readiness or facilitator support is unavailable."
+          }
+        }
       }
     }
   },

@@ -20,7 +20,7 @@ export function x402DataError(code, message, status = 400) {
 }
 export function x402DataOptions() {
   return new Response(null, { status: 204, headers: { ...X402_DATA_HEADERS,
-    'Access-Control-Allow-Methods': 'GET, OPTIONS',
+    'Access-Control-Allow-Methods': 'GET, HEAD, OPTIONS',
     'Access-Control-Allow-Headers': 'Accept, PAYMENT-SIGNATURE, X-X402-Recovery-Token',
     'Access-Control-Max-Age': '600',
   } });
