@@ -9,7 +9,8 @@ const headers = {
   'Cache-Control': 'private, no-store',
   'Access-Control-Allow-Origin': '*',
   'X-Content-Type-Options': 'nosniff',
-  Link: '</data-access>; rel="describedby"; type="text/html"',
+  'X-Robots-Tag': 'noindex, follow',
+  Link: '</data-access>; rel="describedby"; type="application/json"',
 };
 
 export async function GET() {

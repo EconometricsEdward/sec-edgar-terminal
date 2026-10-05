@@ -63,12 +63,6 @@ export const SITE_TOOLS = Object.freeze([
     description: "Build company, fund and market reports to download as PDF and Excel",
   },
   {
-    id: "data-access",
-    label: "Data API",
-    href: "/data-access",
-    description: "Paid batch financials, fundamental screens and credit screens for agents and developers",
-  },
-  {
     id: "about",
     label: "About",
     href: "/about",

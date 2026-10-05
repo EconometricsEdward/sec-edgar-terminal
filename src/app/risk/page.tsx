@@ -4,7 +4,6 @@ import RiskClient from './RiskClient';
 import { buildPageMetadata, SITE_URL } from '../../utils/siteMetadata';
 import { isCftcEnabled } from '../../utils/cftcFeature.js';
 import { parseRiskLocation, riskViewPath } from './riskNavigation.js';
-import ResearchApiAccess from '../../components/ResearchApiAccess';
 
 const TITLE = 'Company Risk — Business Drivers, Debt, Bank Capital & Exposures';
 const DESCRIPTION = isCftcEnabled()
@@ -49,6 +48,5 @@ export default async function RiskPage({ searchParams }: { searchParams: SearchP
   return <>
     <script id="company-risk-research" type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData).replace(/</g, '\\u003c') }} />
     <RiskClient key={`${location.ticker}:${location.view}:${location.basis}:${location.asOf}:${location.entity}`} initialTicker={location.ticker} initialView={location.view} initialBasis={location.basis} initialEntity={location.entity} initialAsOf={location.asOf} cftcEnabled={cftcEnabled} />
-    <ResearchApiAccess context='risk' />
   </>;
 }

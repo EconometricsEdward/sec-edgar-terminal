@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import {
   ArrowRight, ArrowUpRight, Activity, BarChart3, BookOpen,
-  Database, FileSearch, FileText, GitCompareArrows, Globe2, Layers3, ListFilter, ShieldCheck,
+  FileSearch, FileText, GitCompareArrows, Globe2, Layers3, ShieldCheck,
 } from "lucide-react";
 import HomeResearch from "../components/site/HomeResearch";
 import ResearchWorkflow from "../components/site/ResearchWorkflow";
@@ -117,20 +117,6 @@ export default function HomePage() {
       </section>
 
       <HomeResearch cftcEnabled={cftcEnabled} />
-
-      <section className={styles.dataProducts} aria-labelledby="data-products-title">
-        <div className={styles.sectionHeading}>
-          <div><p className={styles.eyebrow}>For agents & developers</p><h2 id="data-products-title">Put the research into your workflow.</h2></div>
-          <Link href="/data-access" prefetch={false}>Explore the Data API <ArrowRight size={16} aria-hidden="true" /></Link>
-        </div>
-        <p className={styles.dataIntro}>Prepared research for agents through paid x402 requests. Financial changes, disclosure evidence and institutional holdings overlap, with JSON and CSV delivery.</p>
-        <div className={styles.dataGrid}>
-          <Link href="/data-access#financial-changes" prefetch={false}><Layers3 size={21} strokeWidth={1.6} aria-hidden="true" /><h3>Explain financial changes</h3><p>Receive compatible period comparisons with compact SEC evidence.</p><span>See what changed <ArrowUpRight size={15} aria-hidden="true" /></span></Link>
-          <Link href="/data-access#disclosure-evidence" prefetch={false}><ListFilter size={21} strokeWidth={1.6} aria-hidden="true" /><h3>Find disclosure evidence</h3><p>Search retained original paragraphs with filing links and coverage.</p><span>Ground an agent answer <ArrowUpRight size={15} aria-hidden="true" /></span></Link>
-          <Link href="/data-access#institutional-overlap" prefetch={false}><Database size={21} strokeWidth={1.6} aria-hidden="true" /><h3>Compare manager holdings</h3><p>Reconcile shared same-quarter institutional positions and reported exposure.</p><span>Find institutional overlap <ArrowUpRight size={15} aria-hidden="true" /></span></Link>
-        </div>
-        <p className={styles.dataNote}>Starter pricing: 0.01 USDC per successfully settled bounded GET. Public research stays free. Coverage and reporting dates vary; source context travels with the prepared data.</p>
-      </section>
 
       <section className={styles.sourceNote} aria-labelledby="sources-title">
         <BookOpen size={27} strokeWidth={1.5} aria-hidden="true" />

@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import DisclosureSearchClient from "./DisclosureSearchClient";
 import { buildPageMetadata } from "../../utils/siteMetadata";
-import ResearchApiAccess from '../../components/ResearchApiAccess';
 
 export const metadata: Metadata = {
   ...buildPageMetadata({
@@ -20,5 +19,5 @@ export default function DisclosuresPage() {
   // Serialize the render date so cached HTML and the first browser render agree,
   // even across UTC midnight. The client refreshes default dates on mount.
   const initialToday = new Date().toISOString().slice(0, 10);
-  return <><DisclosureSearchClient initialToday={initialToday} /><ResearchApiAccess context='disclosures' /></>;
+  return <DisclosureSearchClient initialToday={initialToday} />;
 }

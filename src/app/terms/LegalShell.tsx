@@ -24,7 +24,6 @@ export default function LegalShell({ title, intro, children }: { title: string; 
         <nav className={styles.nav} aria-label="Service policies">
           <Link href="/terms" prefetch={false}>Terms</Link>
           <Link href="/privacy" prefetch={false}>Privacy</Link>
-          <Link href="/data-access" prefetch={false}>Data access</Link>
         </nav>
       </header>
       <div className={styles.body}>{children}</div>
