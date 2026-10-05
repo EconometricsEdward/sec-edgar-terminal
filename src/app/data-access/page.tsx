@@ -70,7 +70,7 @@ const PRODUCT_DETAILS: Record<string, { useCase: string; includes: string[]; for
 
 const PRODUCT_ORDER = ['financial-batch', 'fundamental-screen', 'credit-screen', 'financials', 'factor-universe', 'refinancing'];
 const PRODUCT_ICONS = { 'financial-batch': Layers3, 'fundamental-screen': ListFilter, 'credit-screen': ShieldCheck, financials: Braces, 'factor-universe': Database, refinancing: FileDown };
-const requestExample = "curl -i 'https://secedgarterminal.com/api/x402/v1/financial-batch?tickers=AAPL,MSFT&basis=annual'";
+const requestExample = "curl -i 'https://secedgarterminal.com/api/x402/v1/financial-batch?tickers=AAPL%2CMSFT&basis=annual'";
 
 export default async function DataAccessPage() {
   const configuration = await getX402LivePublicConfiguration(getX402PublicConfiguration());

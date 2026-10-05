@@ -19,7 +19,7 @@ export const DISCOVERY_REQUESTS = Object.freeze([
   `${ORIGIN}/api/x402/v1/financials/AAPL?basis=annual`,
   `${ORIGIN}/api/x402/v1/factor-universe?basis=ttm&limit=100&offset=0`,
   `${ORIGIN}/api/x402/v1/refinancing?limit=100&offset=0`,
-  `${ORIGIN}/api/x402/v1/financial-batch?tickers=AAPL,MSFT&basis=annual`,
+  `${ORIGIN}/api/x402/v1/financial-batch?tickers=AAPL%2CMSFT&basis=annual`,
   `${ORIGIN}/api/x402/v1/fundamental-screen?basis=ttm&limit=100&offset=0`,
   `${ORIGIN}/api/x402/v1/credit-screen?limit=100&offset=0`,
 ]);

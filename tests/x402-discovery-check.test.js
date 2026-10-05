@@ -6,7 +6,7 @@ import { TOKEN_PROGRAM_ADDRESS } from '@solana-program/token';
 import { encodePaymentRequiredHeader } from '@x402/core/http';
 import { x402DiscoveryOptions } from '../src/utils/x402Discovery.js';
 import { X402_DEPLOYMENT_PAY_TO, X402_DEPLOYMENT_NETWORK } from '../src/utils/x402Deployment.js';
-import { checkDiscovery, createEphemeralPayloadBuilder, DISCOVERY_REQUESTS, guardedDiscoveryFetch, loadLocalKeypairSigner, parseDiscoveryArgs } from '../scripts/check-x402-discovery.mjs';
+import { checkDiscovery, createEphemeralPayloadBuilder, DISCOVERY_REQUESTS, guardedDiscoveryFetch, loadLocalKeypairSigner, parseDiscoveryArgs, validateOffer } from '../scripts/check-x402-discovery.mjs';
 
 const FACILITATOR = 'https://facilitator.payai.network';
 const MINT = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
@@ -58,6 +58,14 @@ test('discovery audit is read-only by default and distinguishes valid offers fro
   assert.equal(result.resources[1].resource, 'https://secedgarterminal.com/api/x402/v1/factor-universe');
   assert.ok(result.resources.every(resource => !resource.listing.listed));
   assert.equal(result.catalog.totalForWallet, 0);
+});
+
+test('batch discovery uses the canonical encoded URL while retaining comma-separated ticker semantics', () => {
+  const canonical = 'https://secedgarterminal.com/api/x402/v1/financial-batch?tickers=AAPL%2CMSFT&basis=annual';
+  assert.equal(DISCOVERY_REQUESTS[3], canonical);
+  assert.equal(new URL(canonical).searchParams.get('tickers'), 'AAPL,MSFT');
+  assert.doesNotThrow(() => validateOffer(offers[3], canonical));
+  assert.throws(() => validateOffer(offers[3], canonical.replace('%2C', ',')), /Unexpected payment resource/);
 });
 
 test('local keypair mode requires an explicit registration flag and does not accept wallet environment values', async () => {

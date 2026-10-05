@@ -55,7 +55,7 @@ CSV financial batches provide one row per metric and period, including metric de
 For an unpaid inspection in Windows PowerShell, run these separately. They inspect payment offers and do not authorize payment:
 
 ```powershell
-curl.exe -i "https://secedgarterminal.com/api/x402/v1/financial-batch?tickers=AAPL,MSFT&basis=annual"
+curl.exe -i "https://secedgarterminal.com/api/x402/v1/financial-batch?tickers=AAPL%2CMSFT&basis=annual"
 curl.exe -i "https://secedgarterminal.com/api/x402/v1/fundamental-screen?basis=ttm&limit=100&offset=0&format=csv"
 curl.exe -i "https://secedgarterminal.com/api/x402/v1/credit-screen?limit=100&offset=0"
 ```
