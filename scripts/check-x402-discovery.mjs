@@ -7,9 +7,10 @@ import { pathToFileURL } from 'node:url';
 import { x402Client } from '@x402/core/client';
 import { decodePaymentRequiredHeader } from '@x402/core/http';
 import { ExactSvmScheme } from '@x402/svm/exact/client';
-import { extractDiscoveryInfo, validateDiscoveryExtension } from '@x402/extensions/bazaar';
+import { bazaarResourceServerExtension, extractDiscoveryInfo, validateDiscoveryExtension } from '@x402/extensions/bazaar';
 import { createKeyPairSignerFromBytes, generateKeyPairSigner } from '@solana/kit';
 import { X402_DEPLOYMENT_PAY_TO, X402_DEPLOYMENT_NETWORK } from '../src/utils/x402Deployment.js';
+import { x402DiscoveryOptions } from '../src/utils/x402Discovery.js';
 
 const ORIGIN = 'https://secedgarterminal.com';
 const FACILITATOR = 'https://facilitator.payai.network';
@@ -28,18 +29,52 @@ export const DISCOVERY_REQUESTS = Object.freeze([
   `${ORIGIN}/api/x402/v1/disclosure-topic-packet?cik=0000019617&topics=liquidity%2Ccovenants%2Ccollateral`,
   `${ORIGIN}/api/x402/v1/bank-risk-batch?rssds=852218%2C480228&period=2026-06-30`,
 ]);
+export const DISCOVERY_RESOURCES = Object.freeze(DISCOVERY_REQUESTS.map(requestUrl => {
+  const url = new URL(requestUrl);
+  return `${url.origin}${url.pathname}`;
+}));
+const RESOURCE_IDS = ['financials', 'factor-universe', 'refinancing', 'financial-batch', 'fundamental-screen', 'credit-screen', 'financial-changes', 'disclosure-evidence', 'institutional-overlap', 'disclosure-topic-packet', 'bank-risk-batch'];
 const TERMS = Object.freeze({ scheme: 'exact', network: X402_DEPLOYMENT_NETWORK, asset: ASSET, amount: '10000', payTo: X402_DEPLOYMENT_PAY_TO });
 
-export function validateOffer(offer, requestUrl) {
-  if (!DISCOVERY_REQUESTS.includes(requestUrl) || offer?.x402Version !== 2 || offer.resource?.url !== requestUrl) throw new Error('Unexpected payment resource');
+function stableJson(value) {
+  if (Array.isArray(value)) return `[${value.map(stableJson).join(',')}]`;
+  if (value && typeof value === 'object') return `{${Object.keys(value).sort().map(key => `${JSON.stringify(key)}:${stableJson(value[key])}`).join(',')}}`;
+  return JSON.stringify(value);
+}
+
+function expectedDeclaration(index) {
+  const options = x402DiscoveryOptions(RESOURCE_IDS[index]);
+  const extension = bazaarResourceServerExtension.enrichDeclaration(options.extensions.bazaar, {
+    method: 'GET', routePattern: options.routePattern,
+    adapter: { getPath: () => new URL(DISCOVERY_RESOURCES[index]).pathname },
+  });
+  if (options.omitDiscoveryRouteTemplate) delete extension.routeTemplate;
+  return { options, extension };
+}
+
+function validateDiscoveryOffer(offer, requestUrl, index) {
+  if (index < 0 || offer?.x402Version !== 2 || offer.resource?.url !== requestUrl) throw new Error('Unexpected payment resource');
+  if (['payload', 'paymentPayload', 'signature', 'transaction'].some(key => Object.hasOwn(offer, key))) throw new Error('Discovery offer cannot contain a signed payment payload');
   if (offer.accepts?.length !== 1 || !Object.entries(TERMS).every(([key, value]) => offer.accepts[0][key] === value)) throw new Error('Unexpected payment terms');
-  if (offer.resource.serviceName !== 'SEC EDGAR Terminal' || !offer.resource.tags?.length || offer.resource.mimeType !== 'application/json') throw new Error('Missing service discovery metadata');
+  const expected = expectedDeclaration(index);
+  if (offer.resource.serviceName !== expected.options.serviceName || offer.resource.iconUrl !== expected.options.iconUrl
+    || stableJson(offer.resource.tags) !== stableJson(expected.options.tags) || offer.resource.mimeType !== 'application/json') throw new Error('Unexpected service discovery metadata');
   const extension = offer.extensions?.bazaar;
   const verdict = extension && validateDiscoveryExtension(extension);
   if (!verdict?.valid || extension.info?.input?.method !== 'GET') throw new Error(`Invalid Bazaar declaration: ${verdict?.errors?.join(', ') || 'missing GET declaration'}`);
+  if (stableJson(extension) !== stableJson(expected.extension)) throw new Error('Unexpected Bazaar GET discovery contract');
   const discovery = extractDiscoveryInfo({ x402Version: 2, resource: offer.resource, extensions: offer.extensions }, offer.accepts[0]);
-  if (!discovery?.resourceUrl) throw new Error('Discovery resource was not extracted');
+  if (discovery?.resourceUrl !== DISCOVERY_RESOURCES[index]) throw new Error('Unexpected extracted discovery resource');
   return discovery.resourceUrl;
+}
+
+export function validateOffer(offer, requestUrl) {
+  return validateDiscoveryOffer(offer, requestUrl, DISCOVERY_REQUESTS.indexOf(requestUrl));
+}
+
+/** A probe describes a GET contract; it can never become a purchase URL. */
+export function validateDiscoveryProbe(offer, resourceUrl) {
+  return validateDiscoveryOffer(offer, resourceUrl, DISCOVERY_RESOURCES.indexOf(resourceUrl));
 }
 
 /** Restrict the audit transport, including its optional registration mutation. */
@@ -48,11 +83,13 @@ export function guardedDiscoveryFetch(fetchImpl, { register = false } = {}) {
     const url = new URL(input);
     const method = (init.method || 'GET').toUpperCase();
     const headers = new Headers(init.headers);
-    if (headers.has('PAYMENT-SIGNATURE') || headers.has('X-PAYMENT') || headers.has('Authorization')) throw new Error('Audit transport cannot submit a seller payment or credentials');
+    if (['PAYMENT-SIGNATURE', 'X-PAYMENT', 'X-X402-Recovery-Token', 'Authorization', 'Proxy-Authorization', 'Cookie'].some(name => headers.has(name))) throw new Error('Audit transport cannot submit a seller payment or credentials');
     const seller = DISCOVERY_REQUESTS.includes(url.href);
+    const probe = method === 'HEAD' && DISCOVERY_RESOURCES.includes(url.href);
     const catalog = url.origin === FACILITATOR && ['/discovery/resources', '/discovery/listing-status'].includes(url.pathname);
     const verification = register && url.href === `${FACILITATOR}/verify` && method === 'POST';
-    if (!((method === 'GET' && (seller || catalog) && init.body === undefined) || verification)) throw new Error('Forbidden discovery transport target or method');
+    const readonly = ((method === 'GET' && (seller || catalog)) || probe) && init.body === undefined;
+    if (!(readonly || verification)) throw new Error('Forbidden discovery transport target or method');
     if (verification) {
       const body = JSON.parse(init.body);
       const payload = body.paymentPayload;
@@ -105,7 +142,8 @@ export async function checkDiscovery({ register = false, keypairPath, fetchImpl 
   if (keypairPath && !register) throw new Error('--keypair requires explicit --register; read-only mode never reads a keypair.');
   const request = guardedDiscoveryFetch(fetchImpl, { register });
   const offers = [];
-  // Validate every live offer before generating a signer or sending /verify.
+  // Validate every live GET offer and its query-free HEAD probe before reading
+  // a private key, generating a signer, signing or sending anything to /verify.
   for (const requestUrl of DISCOVERY_REQUESTS) {
     const response = await request(requestUrl);
     if (response.status !== 402) throw new Error(`Expected HTTP 402 at ${requestUrl}; received ${response.status}`);
@@ -115,9 +153,17 @@ export async function checkDiscovery({ register = false, keypairPath, fetchImpl 
     const resource = validateOffer(offer, requestUrl);
     offers.push({ requestUrl, resource, offer });
   }
+  for (const entry of offers) {
+    const response = await request(entry.resource, { method: 'HEAD' });
+    if (response.status !== 402) throw new Error(`Expected unpaid HEAD HTTP 402 at ${entry.resource}; received ${response.status}`);
+    const header = response.headers.get('PAYMENT-REQUIRED');
+    if (!header) throw new Error(`Missing HEAD PAYMENT-REQUIRED header at ${entry.resource}`);
+    validateDiscoveryProbe(decodePaymentRequiredHeader(header), entry.resource);
+    entry.probe = { method: 'HEAD', httpStatus: response.status, offer: 'valid', purchaseMethod: 'GET' };
+  }
   const buildPayload = register ? (createPayload || (keypairPath ? await createLocalPayloadBuilder(keypairPath) : await createEphemeralPayloadBuilder())) : null;
   const resources = [];
-  for (const { requestUrl, resource, offer } of offers) {
+  for (const { requestUrl, resource, offer, probe } of offers) {
     let registration;
     if (register) {
       const paymentPayload = await buildPayload(offer);
@@ -137,7 +183,7 @@ export async function checkDiscovery({ register = false, keypairPath, fetchImpl 
     }
     const statusResponse = await request(`${FACILITATOR}/discovery/listing-status?resource=${encodeURIComponent(resource)}`);
     const status = await statusResponse.json();
-    resources.push({ requestUrl, resource, offer: 'valid', ...(registration ? { registration } : {}), listing: { httpStatus: statusResponse.status, listed: status.listed === true, hidden: status.hidden, hiddenReason: status.hiddenReason, lastWrite: status.lastWrite, lastProbe: status.lastProbe } });
+    resources.push({ requestUrl, resource, offer: 'valid', probe, ...(registration ? { registration } : {}), listing: { httpStatus: statusResponse.status, listed: status.listed === true, hidden: status.hidden, hiddenReason: status.hiddenReason, lastWrite: status.lastWrite, lastProbe: status.lastProbe } });
   }
   const catalogResponse = await request(`${FACILITATOR}/discovery/resources?payTo=${encodeURIComponent(X402_DEPLOYMENT_PAY_TO)}&network=${encodeURIComponent(X402_DEPLOYMENT_NETWORK)}&extensions=bazaar&limit=100`);
   if (!catalogResponse.ok) throw new Error(`Catalog request failed: HTTP ${catalogResponse.status}`);
