@@ -2532,6 +2532,244 @@
                 "institutional-overlap"
               ]
             }
+          },
+          {
+            "name": "tickers",
+            "in": "query",
+            "required": false,
+            "description": "Supported only for financial-changes. Use that paid product's exact selectors and required fields; other fields are rejected.",
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z][A-Za-z0-9.-]{0,14}(,[A-Za-z][A-Za-z0-9.-]{0,14}){0,9}$",
+              "description": "One to ten unique tickers. Multiple securities of the same issuer are rejected."
+            }
+          },
+          {
+            "name": "basis",
+            "in": "query",
+            "required": false,
+            "description": "Supported only for financial-changes. Use that paid product's exact selectors and required fields; other fields are rejected.",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "annual",
+                "quarter",
+                "ytd",
+                "ttm"
+              ],
+              "default": "annual"
+            }
+          },
+          {
+            "name": "comparison",
+            "in": "query",
+            "required": false,
+            "description": "Supported only for financial-changes. Use that paid product's exact selectors and required fields; other fields are rejected.",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "year",
+                "previous"
+              ],
+              "default": "year",
+              "description": "Same season a year earlier, or previous standalone quarter/annual period. previous is unavailable for YTD and TTM."
+            }
+          },
+          {
+            "name": "metrics",
+            "in": "query",
+            "required": false,
+            "description": "Supported only for financial-changes. Use that paid product's exact selectors and required fields; other fields are rejected.",
+            "schema": {
+              "type": "string",
+              "pattern": "^(revenue|operatingIncome|netIncome|operatingCashFlow|freeCashFlow|cash|totalAssets|totalLiabilities|equity|operatingMargin|netMargin|totalDebt)(,(revenue|operatingIncome|netIncome|operatingCashFlow|freeCashFlow|cash|totalAssets|totalLiabilities|equity|operatingMargin|netMargin|totalDebt)){0,11}$",
+              "description": "One to twelve unique supported keys. Omit for eleven core metrics."
+            }
+          },
+          {
+            "name": "format",
+            "in": "query",
+            "required": false,
+            "description": "Supported only for financial-changes, disclosure-evidence, institutional-overlap. Use that paid product's exact selectors and required fields; other fields are rejected.",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "json",
+                "csv"
+              ],
+              "default": "json"
+            }
+          },
+          {
+            "name": "query",
+            "in": "query",
+            "required": false,
+            "description": "Supported only for disclosure-evidence. Use that paid product's exact selectors and required fields; other fields are rejected.",
+            "schema": {
+              "type": "string",
+              "minLength": 2,
+              "maxLength": 1000,
+              "description": "Literal words, quoted phrases, AND, OR, NOT and parentheses; at most sixteen terms with at least one positive term. Exact matching within each retained original paragraph."
+            }
+          },
+          {
+            "name": "ciks",
+            "in": "query",
+            "required": false,
+            "description": "Supported only for disclosure-evidence, institutional-overlap. Use that paid product's exact selectors and required fields; other fields are rejected.",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^(?!0000000000)[0-9]{10}(,(?!0000000000)[0-9]{10}){0,9}$",
+                  "description": "Unique nonzero zero-padded SEC issuer identifiers."
+                },
+                {
+                  "type": "string",
+                  "pattern": "^(?!0000000000)[0-9]{10}(,(?!0000000000)[0-9]{10}){1,3}$",
+                  "description": "Two to four unique manager CIKs with complete prepared portfolios."
+                }
+              ]
+            }
+          },
+          {
+            "name": "forms",
+            "in": "query",
+            "required": false,
+            "description": "Supported only for disclosure-evidence. Use that paid product's exact selectors and required fields; other fields are rejected.",
+            "schema": {
+              "type": "string",
+              "description": "Comma-separated supported SEC forms, including optional /A forms. Omit to search all supported prepared forms; see the output schema for the whitelist."
+            }
+          },
+          {
+            "name": "section",
+            "in": "query",
+            "required": false,
+            "description": "Supported only for disclosure-evidence. Use that paid product's exact selectors and required fields; other fields are rejected.",
+            "schema": {
+              "type": "string",
+              "pattern": "^(all|risk|mda|notes|other|8k:[0-9]\\.[0-9]{2})$",
+              "default": "all"
+            }
+          },
+          {
+            "name": "start",
+            "in": "query",
+            "required": false,
+            "description": "Supported only for disclosure-evidence. Use that paid product's exact selectors and required fields; other fields are rejected.",
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "description": "Inclusive filing date, within the prepared two-year retention window."
+            }
+          },
+          {
+            "name": "end",
+            "in": "query",
+            "required": false,
+            "description": "Supported only for disclosure-evidence. Use that paid product's exact selectors and required fields; other fields are rejected.",
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "description": "Inclusive filing date, no later than today."
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "description": "Supported only for disclosure-evidence, institutional-overlap. Use that paid product's exact selectors and required fields; other fields are rejected.",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 20,
+                  "default": 10
+                },
+                {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 100,
+                  "default": 100
+                }
+              ]
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "description": "Supported only for disclosure-evidence, institutional-overlap. Use that paid product's exact selectors and required fields; other fields are rejected.",
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9999,
+              "default": 0
+            }
+          },
+          {
+            "name": "period",
+            "in": "query",
+            "required": false,
+            "description": "Supported only for institutional-overlap. Use that paid product's exact selectors and required fields; other fields are rejected.",
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9]{4}-(03-31|06-30|09-30|12-31)$",
+              "description": "Exact retained quarter, or omit to require aligned latest prepared quarters."
+            }
+          },
+          {
+            "name": "minimumManagers",
+            "in": "query",
+            "required": false,
+            "description": "Supported only for institutional-overlap. Use that paid product's exact selectors and required fields; other fields are rejected.",
+            "schema": {
+              "type": "integer",
+              "minimum": 2,
+              "maximum": 4,
+              "default": 2
+            }
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "required": false,
+            "description": "Supported only for institutional-overlap. Use that paid product's exact selectors and required fields; other fields are rejected.",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "reportedValue",
+                "cusip"
+              ],
+              "default": "reportedValue"
+            }
+          },
+          {
+            "name": "order",
+            "in": "query",
+            "required": false,
+            "description": "Supported only for institutional-overlap. Use that paid product's exact selectors and required fields; other fields are rejected.",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "asc",
+                "desc"
+              ],
+              "default": "desc"
+            }
+          },
+          {
+            "name": "snapshot",
+            "in": "query",
+            "required": false,
+            "description": "Supported only for institutional-overlap. Use that paid product's exact selectors and required fields; other fields are rejected.",
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$",
+              "description": "Reuse pagination.snapshot with identical manager selection, quarter and sorting."
+            }
           }
         ],
         "responses": {
