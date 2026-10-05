@@ -1,8 +1,17 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { bankMetric, metricChange, bankPageOptions, bankHref, formatBankMetric, quarterLabel } from '../src/utils/bank/viewModel.js';
+import { bankMetric, metricChange, bankPageOptions, bankPreparedPeriod, bankHref, formatBankMetric, quarterLabel } from '../src/utils/bank/viewModel.js';
 import { safeInternalPath, entityFromRoute } from '../src/utils/siteRoutes.js';
 const report = (date, value, passed = true) => ({ id_rssd: 101, report_date: date, validation: { passed }, metrics: [{ key: 'net_income', unit: 'USD', period: 'ytd', value }] });
+test('bank landing selects its newest validated prepared quarter while explicit unavailable quarters remain exact', () => {
+  const state = { periods: ['2026-09-30', '2026-06-30', '2026-03-31'], reports: [report('2026-03-31', 1), report('2026-06-30', 2), report('2026-09-30', 3, false), { ...report('2026-09-30', 4), id_rssd: 102 }] };
+  assert.equal(bankPreparedPeriod(state, 101), '2026-06-30');
+  assert.equal(bankPreparedPeriod(state, 101, '2026-09-30'), '2026-09-30');
+  assert.equal(bankPreparedPeriod(state, 102), '2026-09-30');
+  state.reports = [report('2025-12-31', 1)];
+  assert.equal(bankPreparedPeriod(state, 101), '2026-09-30');
+  assert.equal(bankPreparedPeriod({ periods: [], reports: [] }, 101), '');
+});
 test('quarterly earnings subtract same-year YTD and never cross the year boundary or fill a missing quarter', () => {
   const state = { reports: [report('2025-09-30', 60e6), report('2025-12-31', 90e6), report('2026-03-31', 18e6), report('2026-06-30', 42e6)] };
   assert.equal(bankMetric(state, 101, '2025-09-30', 'net_income', 'quarterly').value, null);

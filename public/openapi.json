@@ -2,8 +2,8 @@
   "openapi": "3.1.0",
   "info": {
     "title": "EDGAR Terminal Research and x402 Data APIs",
-    "version": "2.4.0",
-    "description": "Free public research APIs and nine paid machine products, including compact financial-change evidence, exact prepared-paragraph disclosure search and reconciled same-quarter institutional holdings overlap. Paid GETs cost 0.01 USDC on Solana. Evidence, batch and screen products support JSON/CSV. Public research remains free. Check evidence product coverage free through /api/x402/availability before purchase. Optional exact-response recovery lasts 24 hours after staging."
+    "version": "2.5.0",
+    "description": "Free public research APIs and eleven paid machine products, including company disclosure topic packets and same-quarter legal-bank capital, credit and funding batches. Paid GETs cost 0.01 USDC on Solana. Evidence, bank, batch and screen products support JSON/CSV. Public research remains free. Five products provide free prepared-coverage checks through /api/x402/availability. Optional exact-response recovery lasts 24 hours after staging."
   },
   "servers": [
     {
@@ -734,14 +734,15 @@
           "network": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
           "asset": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
           "amount": "10000",
-          "decimals": 6
+          "decimals": 6,
+          "resourceExample": "https://secedgarterminal.com/api/x402/v1/financials/AAPL?basis=annual"
         },
         "x-bazaar": {
           "extension": "bazaar",
           "serviceName": "SEC EDGAR Terminal",
           "iconUrl": "https://secedgarterminal.com/favicon.svg",
           "indexing": "concrete-path",
-          "resourceExample": "https://secedgarterminal.com/api/x402/v1/financials/AAPL",
+          "resourceExample": "https://secedgarterminal.com/api/x402/v1/financials/AAPL?basis=annual",
           "tags": [
             "finance",
             "SEC",
@@ -749,7 +750,7 @@
             "filing-evidence"
           ],
           "catalog": "https://secedgarterminal.com/api/x402",
-          "description": "Offers include input/path and schema-only output metadata. Discovery indexes concrete paths; financials entries can represent specific supported tickers. The payment resource stays the exact concrete request URL. External listing is facilitator-dependent and is not asserted by this document."
+          "description": "Offers publish query/path contracts and schema-only output declarations. Directory admission and buyer demand remain facilitator-dependent."
         },
         "parameters": [
           {
@@ -868,14 +869,15 @@
           "network": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
           "asset": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
           "amount": "10000",
-          "decimals": 6
+          "decimals": 6,
+          "resourceExample": "https://secedgarterminal.com/api/x402/v1/refinancing?limit=100&offset=0"
         },
         "x-bazaar": {
           "extension": "bazaar",
           "serviceName": "SEC EDGAR Terminal",
           "iconUrl": "https://secedgarterminal.com/favicon.svg",
           "indexing": "concrete-path",
-          "resourceExample": "https://secedgarterminal.com/api/x402/v1/refinancing",
+          "resourceExample": "https://secedgarterminal.com/api/x402/v1/refinancing?limit=100&offset=0",
           "tags": [
             "finance",
             "SEC",
@@ -883,7 +885,7 @@
             "debt-maturities"
           ],
           "catalog": "https://secedgarterminal.com/api/x402",
-          "description": "Offers include input/path and schema-only output metadata. Discovery indexes concrete paths; financials entries can represent specific supported tickers. The payment resource stays the exact concrete request URL. External listing is facilitator-dependent and is not asserted by this document."
+          "description": "Offers publish query/path contracts and schema-only output declarations. Directory admission and buyer demand remain facilitator-dependent."
         },
         "parameters": [
           {
@@ -1002,14 +1004,15 @@
           "network": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
           "asset": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
           "amount": "10000",
-          "decimals": 6
+          "decimals": 6,
+          "resourceExample": "https://secedgarterminal.com/api/x402/v1/factor-universe?basis=ttm&limit=100&offset=0"
         },
         "x-bazaar": {
           "extension": "bazaar",
           "serviceName": "SEC EDGAR Terminal",
           "iconUrl": "https://secedgarterminal.com/favicon.svg",
           "indexing": "concrete-path",
-          "resourceExample": "https://secedgarterminal.com/api/x402/v1/factor-universe",
+          "resourceExample": "https://secedgarterminal.com/api/x402/v1/factor-universe?basis=ttm&limit=100&offset=0",
           "tags": [
             "finance",
             "SEC",
@@ -1017,7 +1020,7 @@
             "sector-analysis"
           ],
           "catalog": "https://secedgarterminal.com/api/x402",
-          "description": "Offers include input/path and schema-only output metadata. Discovery indexes concrete paths; financials entries can represent specific supported tickers. The payment resource stays the exact concrete request URL. External listing is facilitator-dependent and is not asserted by this document."
+          "description": "Offers publish query/path contracts and schema-only output declarations. Directory admission and buyer demand remain facilitator-dependent."
         },
         "parameters": [
           {
@@ -1160,15 +1163,16 @@
           "serviceName": "SEC EDGAR Terminal",
           "iconUrl": "https://secedgarterminal.com/favicon.svg",
           "indexing": "concrete-path",
-          "resourceExample": "https://secedgarterminal.com/api/x402/v1/factor-universe",
+          "resourceExample": "https://secedgarterminal.com/api/x402/v1/financial-batch?tickers=AAPL%2CMSFT&basis=annual",
           "tags": [
             "finance",
             "SEC",
-            "fundamentals",
-            "sector-analysis"
+            "batch-research",
+            "financial-statements",
+            "csv"
           ],
           "catalog": "https://secedgarterminal.com/api/x402",
-          "description": "Offers include input/path and schema-only output metadata. Discovery indexes concrete paths; financials entries can represent specific supported tickers. The payment resource stays the exact concrete request URL. External listing is facilitator-dependent and is not asserted by this document."
+          "description": "Offers publish query/path contracts and schema-only output declarations. Directory admission and buyer demand remain facilitator-dependent."
         },
         "parameters": [
           {
@@ -1322,15 +1326,16 @@
           "serviceName": "SEC EDGAR Terminal",
           "iconUrl": "https://secedgarterminal.com/favicon.svg",
           "indexing": "concrete-path",
-          "resourceExample": "https://secedgarterminal.com/api/x402/v1/factor-universe",
+          "resourceExample": "https://secedgarterminal.com/api/x402/v1/fundamental-screen?basis=ttm&limit=100&offset=0",
           "tags": [
             "finance",
             "SEC",
-            "fundamentals",
-            "sector-analysis"
+            "screening",
+            "peer-comparison",
+            "csv"
           ],
           "catalog": "https://secedgarterminal.com/api/x402",
-          "description": "Offers include input/path and schema-only output metadata. Discovery indexes concrete paths; financials entries can represent specific supported tickers. The payment resource stays the exact concrete request URL. External listing is facilitator-dependent and is not asserted by this document."
+          "description": "Offers publish query/path contracts and schema-only output declarations. Directory admission and buyer demand remain facilitator-dependent."
         },
         "parameters": [
           {
@@ -1606,15 +1611,16 @@
           "serviceName": "SEC EDGAR Terminal",
           "iconUrl": "https://secedgarterminal.com/favicon.svg",
           "indexing": "concrete-path",
-          "resourceExample": "https://secedgarterminal.com/api/x402/v1/factor-universe",
+          "resourceExample": "https://secedgarterminal.com/api/x402/v1/credit-screen?limit=100&offset=0",
           "tags": [
             "finance",
             "SEC",
-            "fundamentals",
-            "sector-analysis"
+            "credit-research",
+            "debt-maturities",
+            "csv"
           ],
           "catalog": "https://secedgarterminal.com/api/x402",
-          "description": "Offers include input/path and schema-only output metadata. Discovery indexes concrete paths; financials entries can represent specific supported tickers. The payment resource stays the exact concrete request URL. External listing is facilitator-dependent and is not asserted by this document."
+          "description": "Offers publish query/path contracts and schema-only output declarations. Directory admission and buyer demand remain facilitator-dependent."
         },
         "parameters": [
           {
@@ -1918,15 +1924,16 @@
           "serviceName": "SEC EDGAR Terminal",
           "iconUrl": "https://secedgarterminal.com/favicon.svg",
           "indexing": "concrete-path",
-          "resourceExample": "https://secedgarterminal.com/api/x402/v1/factor-universe",
+          "resourceExample": "https://secedgarterminal.com/api/x402/v1/financial-changes?tickers=AAPL%2CMSFT&basis=annual&comparison=year",
           "tags": [
             "finance",
             "SEC",
-            "fundamentals",
-            "sector-analysis"
+            "financial-changes",
+            "evidence",
+            "csv"
           ],
           "catalog": "https://secedgarterminal.com/api/x402",
-          "description": "Offers include input/path and schema-only output metadata. Discovery indexes concrete paths; financials entries can represent specific supported tickers. The payment resource stays the exact concrete request URL. External listing is facilitator-dependent and is not asserted by this document."
+          "description": "Offers publish query/path contracts and schema-only output declarations. Directory admission and buyer demand remain facilitator-dependent."
         },
         "parameters": [
           {
@@ -2102,15 +2109,16 @@
           "serviceName": "SEC EDGAR Terminal",
           "iconUrl": "https://secedgarterminal.com/favicon.svg",
           "indexing": "concrete-path",
-          "resourceExample": "https://secedgarterminal.com/api/x402/v1/factor-universe",
+          "resourceExample": "https://secedgarterminal.com/api/x402/v1/disclosure-evidence?query=liquidity&limit=10",
           "tags": [
             "finance",
             "SEC",
-            "fundamentals",
-            "sector-analysis"
+            "disclosure-search",
+            "evidence",
+            "csv"
           ],
           "catalog": "https://secedgarterminal.com/api/x402",
-          "description": "Offers include input/path and schema-only output metadata. Discovery indexes concrete paths; financials entries can represent specific supported tickers. The payment resource stays the exact concrete request URL. External listing is facilitator-dependent and is not asserted by this document."
+          "description": "Offers publish query/path contracts and schema-only output declarations. Directory admission and buyer demand remain facilitator-dependent."
         },
         "parameters": [
           {
@@ -2319,15 +2327,16 @@
           "serviceName": "SEC EDGAR Terminal",
           "iconUrl": "https://secedgarterminal.com/favicon.svg",
           "indexing": "concrete-path",
-          "resourceExample": "https://secedgarterminal.com/api/x402/v1/factor-universe",
+          "resourceExample": "https://secedgarterminal.com/api/x402/v1/institutional-overlap?ciks=0001067983%2C0001350694&period=2026-06-30&limit=100&offset=0",
           "tags": [
             "finance",
-            "SEC",
-            "fundamentals",
-            "sector-analysis"
+            "13F",
+            "institutional-holdings",
+            "overlap",
+            "csv"
           ],
           "catalog": "https://secedgarterminal.com/api/x402",
-          "description": "Offers include input/path and schema-only output metadata. Discovery indexes concrete paths; financials entries can represent specific supported tickers. The payment resource stays the exact concrete request URL. External listing is facilitator-dependent and is not asserted by this document."
+          "description": "Offers publish query/path contracts and schema-only output declarations. Directory admission and buyer demand remain facilitator-dependent."
         },
         "parameters": [
           {
@@ -2518,7 +2527,7 @@
           "Paid x402 data"
         ],
         "summary": "Check prepared evidence-product coverage free before authorizing payment",
-        "description": "Use product=financial-changes, disclosure-evidence or institutional-overlap with the same documented query parameters as that paid product. Unknown or incompatible fields are rejected. Returns a fixed readiness summary, stale flag and returned result count; no paid rows, quotes or payment authorization. Do not send payment or recovery headers. Four concurrent checks and thirty starts per minute per runtime. Readiness is checked at response time and does not reserve the data.",
+        "description": "Free bounded prepared-data checks for the five listed products. Use the selected product’s exact query contract; parameters belonging to another product are rejected. Returns only readiness, stale status, result count and an optional stable packet fingerprint, never paid quotes or metric rows. Successful summaries can be reused for up to thirty seconds per runtime, capped at ninety-six summaries; checkedAt remains the original reader check time. Concurrent identical selections share one reader. Actual reader starts are limited to four concurrent and thirty per minute per runtime. Coverage can change before purchase; readiness is not a reservation. Do not send payment or recovery headers.",
         "parameters": [
           {
             "name": "product",
@@ -2529,7 +2538,9 @@
               "enum": [
                 "financial-changes",
                 "disclosure-evidence",
-                "institutional-overlap"
+                "institutional-overlap",
+                "disclosure-topic-packet",
+                "bank-risk-batch"
               ]
             }
           },
@@ -2566,13 +2577,26 @@
             "required": false,
             "description": "Supported only for financial-changes. Use that paid product's exact selectors and required fields; other fields are rejected.",
             "schema": {
-              "type": "string",
-              "enum": [
-                "year",
-                "previous"
-              ],
-              "default": "year",
-              "description": "Same season a year earlier, or previous standalone quarter/annual period. previous is unavailable for YTD and TTM."
+              "anyOf": [
+                {
+                  "type": "string",
+                  "enum": [
+                    "year",
+                    "previous"
+                  ],
+                  "default": "year",
+                  "description": "Same season a year earlier, or previous standalone quarter/annual period. previous is unavailable for YTD and TTM."
+                },
+                {
+                  "type": "string",
+                  "enum": [
+                    "previous",
+                    "none"
+                  ],
+                  "default": "previous",
+                  "description": "Consecutive prior quarter only; missing or incompatible prior evidence remains unavailable."
+                }
+              ]
             }
           },
           {
@@ -2659,9 +2683,18 @@
             "required": false,
             "description": "Supported only for disclosure-evidence. Use that paid product's exact selectors and required fields; other fields are rejected.",
             "schema": {
-              "type": "string",
-              "format": "date",
-              "description": "Inclusive filing date, within the prepared two-year retention window."
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date",
+                  "description": "Inclusive filing date, within the prepared two-year retention window."
+                },
+                {
+                  "type": "string",
+                  "format": "date",
+                  "description": "Inclusive filing date within the prepared two-year retention window."
+                }
+              ]
             }
           },
           {
@@ -2670,9 +2703,18 @@
             "required": false,
             "description": "Supported only for disclosure-evidence. Use that paid product's exact selectors and required fields; other fields are rejected.",
             "schema": {
-              "type": "string",
-              "format": "date",
-              "description": "Inclusive filing date, no later than today."
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date",
+                  "description": "Inclusive filing date, no later than today."
+                },
+                {
+                  "type": "string",
+                  "format": "date",
+                  "description": "Inclusive filing date no later than today."
+                }
+              ]
             }
           },
           {
@@ -2715,9 +2757,18 @@
             "required": false,
             "description": "Supported only for institutional-overlap. Use that paid product's exact selectors and required fields; other fields are rejected.",
             "schema": {
-              "type": "string",
-              "pattern": "^[0-9]{4}-(03-31|06-30|09-30|12-31)$",
-              "description": "Exact retained quarter, or omit to require aligned latest prepared quarters."
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^[0-9]{4}-(03-31|06-30|09-30|12-31)$",
+                  "description": "Exact retained quarter, or omit to require aligned latest prepared quarters."
+                },
+                {
+                  "type": "string",
+                  "pattern": "^[0-9]{4}-(03-31|06-30|09-30|12-31)$",
+                  "description": "Required exact prepared reporting quarter; directory dates alone do not establish a prepared report."
+                }
+              ]
             }
           },
           {
@@ -2766,9 +2817,49 @@
             "required": false,
             "description": "Supported only for institutional-overlap. Use that paid product's exact selectors and required fields; other fields are rejected.",
             "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^[a-f0-9]{64}$",
+                  "description": "Reuse pagination.snapshot with identical manager selection, quarter and sorting."
+                },
+                {
+                  "type": "string",
+                  "pattern": "^[a-f0-9]{64}$",
+                  "description": "Reuse the exact output snapshot with the same RSSDs, quarter and comparison; changed evidence returns409."
+                }
+              ]
+            }
+          },
+          {
+            "name": "cik",
+            "in": "query",
+            "required": false,
+            "schema": {
               "type": "string",
-              "pattern": "^[a-f0-9]{64}$",
-              "description": "Reuse pagination.snapshot with identical manager selection, quarter and sorting."
+              "pattern": "^(?!0000000000)[0-9]{10}$",
+              "description": "One exact nonzero ten-digit SEC issuer CIK. No ticker or alias resolution."
+            }
+          },
+          {
+            "name": "topics",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "pattern": "^(liquidity|covenants|collateral|customer-concentration)(,(liquidity|covenants|collateral|customer-concentration)){0,2}$",
+              "default": "liquidity,covenants,collateral",
+              "description": "One to three unique literal language topics; each checks at most 120 candidates and returns at most five full paragraphs."
+            }
+          },
+          {
+            "name": "rssds",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "pattern": "^[1-9][0-9]{0,9}(,[1-9][0-9]{0,9}){0,3}$",
+              "description": "One to four unique legal-bank RSSDs with complete prepared current Call Reports."
             }
           }
         ],
@@ -2842,6 +2933,11 @@
                     },
                     "note": {
                       "type": "string"
+                    },
+                    "dataVersion": {
+                      "type": "string",
+                      "pattern": "^[a-f0-9]{64}$",
+                      "description": "Optional stable fingerprint of the selected prepared packet. Compare identical selectors to avoid buying an unchanged packet. Includes source and selection context; availability checkedAt is excluded."
                     }
                   }
                 }
@@ -2870,6 +2966,416 @@
             "description": "Prepared source unavailable or invalid"
           }
         }
+      }
+    },
+    "/api/x402/v1/disclosure-topic-packet": {
+      "get": {
+        "tags": [
+          "Paid x402 data"
+        ],
+        "summary": "Company disclosure topic packets",
+        "description": "Organize original prepared filing paragraphs across selected liquidity, covenant, collateral and customer-concentration topics into one issuer research packet. Prepared retained paragraphs only, with partial extraction. A topic without matching evidence is not proof of absence in a filing or of absence of risk. This packet does not classify risk, establish compliance, or identify changes between complete filings. If every topic has no match, no settlement occurs. One exact SEC issuer; 1–3 topics; up to 5 paragraphs and 120 candidates per topic. Unknown, duplicate and empty query parameters are rejected before a payment offer. Prepared reads never acquire new upstream data. Each successful bounded request costs 0.01 USDC.",
+        "security": [
+          {
+            "X402Payment": []
+          }
+        ],
+        "x-x402": {
+          "version": 2,
+          "scheme": "exact",
+          "price": "0.01",
+          "currency": "USDC",
+          "network": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+          "asset": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+          "amount": "10000",
+          "decimals": 6,
+          "resourceExample": "https://secedgarterminal.com/api/x402/v1/disclosure-topic-packet?cik=0000019617&topics=liquidity%2Ccovenants%2Ccollateral",
+          "formats": [
+            "json",
+            "csv"
+          ]
+        },
+        "x-bazaar": {
+          "enabled": true,
+          "routePattern": "/api/x402/v1/disclosure-topic-packet",
+          "inputSchema": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "cik"
+            ],
+            "properties": {
+              "cik": {
+                "type": "string",
+                "pattern": "^(?!0000000000)[0-9]{10}$",
+                "description": "One exact nonzero ten-digit SEC issuer CIK. No ticker or alias resolution."
+              },
+              "topics": {
+                "type": "string",
+                "pattern": "^(liquidity|covenants|collateral|customer-concentration)(,(liquidity|covenants|collateral|customer-concentration)){0,2}$",
+                "default": "liquidity,covenants,collateral",
+                "description": "One to three unique literal language topics; each checks at most 120 candidates and returns at most five full paragraphs."
+              },
+              "start": {
+                "type": "string",
+                "format": "date",
+                "description": "Inclusive filing date within the prepared two-year retention window."
+              },
+              "end": {
+                "type": "string",
+                "format": "date",
+                "description": "Inclusive filing date no later than today."
+              },
+              "format": {
+                "type": "string",
+                "enum": [
+                  "json",
+                  "csv"
+                ],
+                "default": "json"
+              }
+            }
+          },
+          "outputSchema": "#/components/schemas/PaidDisclosureTopicPacket",
+          "extension": "bazaar",
+          "serviceName": "SEC EDGAR Terminal",
+          "iconUrl": "https://secedgarterminal.com/favicon.svg",
+          "indexing": "concrete-path",
+          "resourceExample": "https://secedgarterminal.com/api/x402/v1/disclosure-topic-packet?cik=0000019617&topics=liquidity%2Ccovenants%2Ccollateral",
+          "tags": [
+            "finance",
+            "SEC",
+            "disclosures",
+            "risk-evidence",
+            "csv"
+          ],
+          "catalog": "https://secedgarterminal.com/api/x402",
+          "description": "Offers publish query/path contracts and schema-only output declarations. Directory admission and buyer demand remain facilitator-dependent."
+        },
+        "parameters": [
+          {
+            "name": "cik",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^(?!0000000000)[0-9]{10}$",
+              "description": "One exact nonzero ten-digit SEC issuer CIK. No ticker or alias resolution."
+            }
+          },
+          {
+            "name": "topics",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "pattern": "^(liquidity|covenants|collateral|customer-concentration)(,(liquidity|covenants|collateral|customer-concentration)){0,2}$",
+              "default": "liquidity,covenants,collateral",
+              "description": "One to three unique literal language topics; each checks at most 120 candidates and returns at most five full paragraphs."
+            }
+          },
+          {
+            "name": "start",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "description": "Inclusive filing date within the prepared two-year retention window."
+            }
+          },
+          {
+            "name": "end",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "description": "Inclusive filing date no later than today."
+            }
+          },
+          {
+            "name": "format",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "json",
+                "csv"
+              ],
+              "default": "json"
+            }
+          },
+          {
+            "name": "X-X402-Recovery-Token",
+            "in": "header",
+            "required": false,
+            "description": "Optional unique random 32-byte capability encoded as 64 lowercase hexadecimal characters. Generate before the signed purchase and retain privately. Stages exact response before settlement for no-charge retrieval for 24 hours. Never put it in the URL.",
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Selected source-linked prepared packet. Preserve exact identifiers, reporting/source dates, units, coverage and snapshot fingerprint.",
+            "headers": {
+              "PAYMENT-RESPONSE": {
+                "$ref": "#/components/headers/PaymentResponse"
+              },
+              "EXTENSION-RESPONSES": {
+                "$ref": "#/components/headers/ExtensionResponses"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaidDisclosureTopicPacket"
+                }
+              },
+              "text/csv": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "RFC 4180 CSV with complete original evidence or metric input context, source clocks, selection and snapshot columns; formula-like text is neutralized."
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/X402BadRequest"
+          },
+          "402": {
+            "$ref": "#/components/responses/X402PaymentRequired"
+          },
+          "404": {
+            "description": "No retained exact paragraph match for any selected topic; no settlement."
+          },
+          "413": {
+            "description": "Prepared product exceeds 4 MiB; choose fewer companies or a smaller page. No settlement."
+          },
+          "429": {
+            "$ref": "#/components/responses/X402RateLimited"
+          },
+          "502": {
+            "$ref": "#/components/responses/X402ResourceFailure"
+          },
+          "503": {
+            "$ref": "#/components/responses/X402Unavailable"
+          }
+        },
+        "operationId": "readPaidDisclosureTopicPacket"
+      }
+    },
+    "/api/x402/v1/bank-risk-batch": {
+      "get": {
+        "tags": [
+          "Paid x402 data"
+        ],
+        "summary": "Bank capital, credit & funding batches",
+        "description": "Compare selected capital, credit-quality and funding observations across up to four legal banks for one explicit FFIEC Call Report quarter, with source evidence and prior-quarter changes. Validated prepared FFIEC reports for the selected legal banks only. Every current report is required; an unavailable prior report leaves comparisons unavailable. Bank identifiers do not imply parent-company ownership or SEC issuer equivalence. Native dollar and percentage units and ratio denominators are preserved. No supervisory rating, credit score or real-time condition is inferred. 1–4 unique legal-bank RSSDs; one explicit quarter; up to 4 MiB. Unknown, duplicate and empty query parameters are rejected before a payment offer. Prepared reads never acquire new upstream data. Each successful bounded request costs 0.01 USDC.",
+        "security": [
+          {
+            "X402Payment": []
+          }
+        ],
+        "x-x402": {
+          "version": 2,
+          "scheme": "exact",
+          "price": "0.01",
+          "currency": "USDC",
+          "network": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+          "asset": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+          "amount": "10000",
+          "decimals": 6,
+          "resourceExample": "https://secedgarterminal.com/api/x402/v1/bank-risk-batch?rssds=852218%2C480228&period=2026-06-30",
+          "formats": [
+            "json",
+            "csv"
+          ]
+        },
+        "x-bazaar": {
+          "enabled": true,
+          "routePattern": "/api/x402/v1/bank-risk-batch",
+          "inputSchema": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "rssds",
+              "period"
+            ],
+            "properties": {
+              "rssds": {
+                "type": "string",
+                "pattern": "^[1-9][0-9]{0,9}(,[1-9][0-9]{0,9}){0,3}$",
+                "description": "One to four unique legal-bank RSSDs with complete prepared current Call Reports."
+              },
+              "period": {
+                "type": "string",
+                "pattern": "^[0-9]{4}-(03-31|06-30|09-30|12-31)$",
+                "description": "Required exact prepared reporting quarter; directory dates alone do not establish a prepared report."
+              },
+              "comparison": {
+                "type": "string",
+                "enum": [
+                  "previous",
+                  "none"
+                ],
+                "default": "previous",
+                "description": "Consecutive prior quarter only; missing or incompatible prior evidence remains unavailable."
+              },
+              "snapshot": {
+                "type": "string",
+                "pattern": "^[a-f0-9]{64}$",
+                "description": "Reuse the exact output snapshot with the same RSSDs, quarter and comparison; changed evidence returns409."
+              },
+              "format": {
+                "type": "string",
+                "enum": [
+                  "json",
+                  "csv"
+                ],
+                "default": "json"
+              }
+            }
+          },
+          "outputSchema": "#/components/schemas/PaidBankRiskBatch",
+          "extension": "bazaar",
+          "serviceName": "SEC EDGAR Terminal",
+          "iconUrl": "https://secedgarterminal.com/favicon.svg",
+          "indexing": "concrete-path",
+          "resourceExample": "https://secedgarterminal.com/api/x402/v1/bank-risk-batch?rssds=852218%2C480228&period=2026-06-30",
+          "tags": [
+            "finance",
+            "FFIEC",
+            "banks",
+            "risk-evidence",
+            "csv"
+          ],
+          "catalog": "https://secedgarterminal.com/api/x402",
+          "description": "Offers publish query/path contracts and schema-only output declarations. Directory admission and buyer demand remain facilitator-dependent."
+        },
+        "parameters": [
+          {
+            "name": "rssds",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[1-9][0-9]{0,9}(,[1-9][0-9]{0,9}){0,3}$",
+              "description": "One to four unique legal-bank RSSDs with complete prepared current Call Reports."
+            }
+          },
+          {
+            "name": "period",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9]{4}-(03-31|06-30|09-30|12-31)$",
+              "description": "Required exact prepared reporting quarter; directory dates alone do not establish a prepared report."
+            }
+          },
+          {
+            "name": "comparison",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "previous",
+                "none"
+              ],
+              "default": "previous",
+              "description": "Consecutive prior quarter only; missing or incompatible prior evidence remains unavailable."
+            }
+          },
+          {
+            "name": "snapshot",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$",
+              "description": "Reuse the exact output snapshot with the same RSSDs, quarter and comparison; changed evidence returns409."
+            }
+          },
+          {
+            "name": "format",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "json",
+                "csv"
+              ],
+              "default": "json"
+            }
+          },
+          {
+            "name": "X-X402-Recovery-Token",
+            "in": "header",
+            "required": false,
+            "description": "Optional unique random 32-byte capability encoded as 64 lowercase hexadecimal characters. Generate before the signed purchase and retain privately. Stages exact response before settlement for no-charge retrieval for 24 hours. Never put it in the URL.",
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Selected source-linked prepared packet. Preserve exact identifiers, reporting/source dates, units, coverage and snapshot fingerprint.",
+            "headers": {
+              "PAYMENT-RESPONSE": {
+                "$ref": "#/components/headers/PaymentResponse"
+              },
+              "EXTENSION-RESPONSES": {
+                "$ref": "#/components/headers/ExtensionResponses"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaidBankRiskBatch"
+                }
+              },
+              "text/csv": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "RFC 4180 CSV with complete original evidence or metric input context, source clocks, selection and snapshot columns; formula-like text is neutralized."
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/X402BadRequest"
+          },
+          "402": {
+            "$ref": "#/components/responses/X402PaymentRequired"
+          },
+          "404": {
+            "description": "Selected prepared evidence is unavailable; no settlement."
+          },
+          "409": {
+            "description": "Requested snapshot fingerprint differs from the prepared bank packet; no settlement."
+          },
+          "413": {
+            "description": "Prepared product exceeds 4 MiB; choose fewer companies or a smaller page. No settlement."
+          },
+          "429": {
+            "$ref": "#/components/responses/X402RateLimited"
+          },
+          "502": {
+            "$ref": "#/components/responses/X402ResourceFailure"
+          },
+          "503": {
+            "$ref": "#/components/responses/X402Unavailable"
+          }
+        },
+        "operationId": "readPaidBankRiskBatch"
       }
     }
   },
@@ -6725,6 +7231,1196 @@
                 "pattern": "^[a-f0-9]{64}$"
               }
             }
+          },
+          "limitations": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "PaidDisclosureTopicPacket": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "schemaVersion",
+          "status",
+          "generatedAt",
+          "snapshot",
+          "selection",
+          "sourceCatalog",
+          "evidenceCatalog",
+          "topics",
+          "limitations"
+        ],
+        "properties": {
+          "schemaVersion": {
+            "const": "edgar.paid-disclosure-topic-packet.v1"
+          },
+          "status": {
+            "enum": [
+              "ready",
+              "partial"
+            ]
+          },
+          "generatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "snapshot": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          },
+          "selection": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "cik",
+              "topics",
+              "start",
+              "end"
+            ],
+            "properties": {
+              "cik": {
+                "type": "string",
+                "pattern": "^(?!0000000000)[0-9]{10}$"
+              },
+              "topics": {
+                "type": "array",
+                "minItems": 1,
+                "maxItems": 3,
+                "uniqueItems": true,
+                "items": {
+                  "enum": [
+                    "liquidity",
+                    "covenants",
+                    "collateral",
+                    "customer-concentration"
+                  ]
+                }
+              },
+              "start": {
+                "type": "string",
+                "format": "date"
+              },
+              "end": {
+                "type": "string",
+                "format": "date"
+              }
+            }
+          },
+          "sourceCatalog": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 15,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "id",
+                "cik",
+                "ticker",
+                "companyName",
+                "accession",
+                "primaryDoc",
+                "form",
+                "filingDate",
+                "sourceUrl",
+                "sourceRetrievedAt",
+                "indexedAt",
+                "documentFingerprint",
+                "indexedPassages",
+                "totalPassages",
+                "documentComplete",
+                "parserVersion",
+                "identityProof"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "pattern": "^[a-f0-9]{64}$"
+                },
+                "cik": {
+                  "type": "string",
+                  "pattern": "^(?!0000000000)[0-9]{10}$"
+                },
+                "ticker": {
+                  "type": "string",
+                  "pattern": "^[A-Z0-9.-]{0,15}$"
+                },
+                "companyName": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 250
+                },
+                "accession": {
+                  "type": "string",
+                  "pattern": "^[0-9]{10}-[0-9]{2}-[0-9]{6}$"
+                },
+                "primaryDoc": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 250
+                },
+                "form": {
+                  "enum": [
+                    "10-K",
+                    "10-K/A",
+                    "10-Q",
+                    "10-Q/A",
+                    "8-K",
+                    "8-K/A",
+                    "20-F",
+                    "20-F/A",
+                    "40-F",
+                    "40-F/A",
+                    "6-K",
+                    "6-K/A",
+                    "S-1",
+                    "S-1/A",
+                    "S-3",
+                    "S-3/A",
+                    "S-4",
+                    "S-4/A",
+                    "DEF 14A",
+                    "DEF 14A/A",
+                    "DEFM14A",
+                    "DEFM14A/A",
+                    "N-CSR",
+                    "N-CSR/A",
+                    "NPORT-P",
+                    "NPORT-P/A"
+                  ]
+                },
+                "filingDate": {
+                  "type": "string",
+                  "format": "date"
+                },
+                "sourceUrl": {
+                  "type": "string",
+                  "pattern": "^https://www\\.sec\\.gov/Archives/edgar/data/"
+                },
+                "sourceRetrievedAt": {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                "indexedAt": {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                "documentFingerprint": {
+                  "type": "string",
+                  "pattern": "^[a-f0-9]{64}$"
+                },
+                "indexedPassages": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 180
+                },
+                "totalPassages": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 200000
+                },
+                "documentComplete": {
+                  "type": "boolean"
+                },
+                "parserVersion": {
+                  "const": 1
+                },
+                "identityProof": {
+                  "const": "retained-sec-document-identifiers"
+                }
+              }
+            }
+          },
+          "evidenceCatalog": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 15,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "id",
+                "sourceRef",
+                "index",
+                "sectionId",
+                "section",
+                "quote",
+                "fingerprint"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "pattern": "^[a-f0-9]{64}$"
+                },
+                "sourceRef": {
+                  "type": "string",
+                  "pattern": "^[a-f0-9]{64}$"
+                },
+                "index": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 199999
+                },
+                "sectionId": {
+                  "type": "string",
+                  "pattern": "^(other|risk|mda|notes|8k:[0-9]\\.[0-9]{2})$"
+                },
+                "section": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 100
+                },
+                "quote": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 6000
+                },
+                "fingerprint": {
+                  "type": "string",
+                  "pattern": "^[a-f0-9]{64}$"
+                }
+              }
+            }
+          },
+          "topics": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 3,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "id",
+                "label",
+                "query",
+                "status",
+                "coverage",
+                "candidateCoverage",
+                "filings"
+              ],
+              "properties": {
+                "id": {
+                  "enum": [
+                    "liquidity",
+                    "covenants",
+                    "collateral",
+                    "customer-concentration"
+                  ]
+                },
+                "label": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 100
+                },
+                "query": {
+                  "type": "string",
+                  "minLength": 2,
+                  "maxLength": 1000
+                },
+                "status": {
+                  "enum": [
+                    "matched",
+                    "no-retained-match"
+                  ]
+                },
+                "coverage": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "scope",
+                    "partial",
+                    "documents",
+                    "indexedPassages",
+                    "oldestFilingDate",
+                    "newestFilingDate",
+                    "lastIndexedAt",
+                    "retentionDays",
+                    "parserVersion",
+                    "queryVerification"
+                  ],
+                  "properties": {
+                    "scope": {
+                      "const": "partial-prepared-paragraph-corpus"
+                    },
+                    "partial": {
+                      "const": true
+                    },
+                    "documents": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 600
+                    },
+                    "indexedPassages": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 108000
+                    },
+                    "oldestFilingDate": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "format": "date"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "newestFilingDate": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "format": "date"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "lastIndexedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "format": "date-time"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "retentionDays": {
+                      "const": 730
+                    },
+                    "parserVersion": {
+                      "const": 1
+                    },
+                    "queryVerification": {
+                      "const": "exact-boolean-on-full-retained-paragraph"
+                    }
+                  }
+                },
+                "candidateCoverage": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "offset",
+                    "limit",
+                    "rawCandidatesReturned",
+                    "rawCandidatesScanned",
+                    "verifiedReturned",
+                    "nextOffset",
+                    "hasMore",
+                    "windowLimited",
+                    "moreMeaning"
+                  ],
+                  "properties": {
+                    "offset": {
+                      "const": 0
+                    },
+                    "limit": {
+                      "const": 5
+                    },
+                    "rawCandidatesReturned": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 120
+                    },
+                    "rawCandidatesScanned": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 120
+                    },
+                    "verifiedReturned": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 5
+                    },
+                    "nextOffset": {
+                      "anyOf": [
+                        {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 9999
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "hasMore": {
+                      "type": "boolean"
+                    },
+                    "windowLimited": {
+                      "type": "boolean"
+                    },
+                    "moreMeaning": {
+                      "const": "additional-candidates-not-confirmed-exact-matches"
+                    }
+                  }
+                },
+                "filings": {
+                  "type": "array",
+                  "maxItems": 5,
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "sourceRef",
+                      "sections"
+                    ],
+                    "properties": {
+                      "sourceRef": {
+                        "type": "string",
+                        "pattern": "^[a-f0-9]{64}$"
+                      },
+                      "sections": {
+                        "type": "array",
+                        "minItems": 1,
+                        "maxItems": 5,
+                        "items": {
+                          "type": "object",
+                          "additionalProperties": false,
+                          "required": [
+                            "sectionId",
+                            "section",
+                            "evidenceRefs"
+                          ],
+                          "properties": {
+                            "sectionId": {
+                              "type": "string",
+                              "pattern": "^(other|risk|mda|notes|8k:[0-9]\\.[0-9]{2})$"
+                            },
+                            "section": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 100
+                            },
+                            "evidenceRefs": {
+                              "type": "array",
+                              "minItems": 1,
+                              "maxItems": 5,
+                              "uniqueItems": true,
+                              "items": {
+                                "type": "string",
+                                "pattern": "^[a-f0-9]{64}$"
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "limitations": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 12,
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "PaidBankRiskBatch": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "schemaVersion",
+          "status",
+          "selection",
+          "snapshot",
+          "checkedAt",
+          "stale",
+          "bankCount",
+          "banks",
+          "limitations"
+        ],
+        "properties": {
+          "schemaVersion": {
+            "const": "edgar.paid-bank-risk-batch.v1"
+          },
+          "status": {
+            "const": "ready"
+          },
+          "selection": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "rssds",
+              "period",
+              "comparison"
+            ],
+            "properties": {
+              "rssds": {
+                "type": "array",
+                "items": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 9999999999
+                },
+                "minItems": 1,
+                "maxItems": 4,
+                "uniqueItems": true
+              },
+              "period": {
+                "type": "string",
+                "pattern": "^[0-9]{4}-(03-31|06-30|09-30|12-31)$"
+              },
+              "comparison": {
+                "enum": [
+                  "previous",
+                  "none"
+                ]
+              }
+            }
+          },
+          "snapshot": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          },
+          "checkedAt": {
+            "type": "string"
+          },
+          "stale": {
+            "type": "boolean"
+          },
+          "bankCount": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 4
+          },
+          "banks": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "rssd",
+                "name",
+                "city",
+                "state",
+                "currentReport",
+                "priorReport",
+                "priorUnavailableReason",
+                "metrics",
+                "sourceCatalog"
+              ],
+              "properties": {
+                "rssd": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 9999999999
+                },
+                "name": {
+                  "type": "string"
+                },
+                "city": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "state": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "currentReport": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "reportDate",
+                    "form",
+                    "sourceHash",
+                    "retrievedAt",
+                    "submissionDateRaw",
+                    "rawSourceUrl",
+                    "formSource",
+                    "validation"
+                  ],
+                  "properties": {
+                    "reportDate": {
+                      "type": "string",
+                      "pattern": "^[0-9]{4}-(03-31|06-30|09-30|12-31)$"
+                    },
+                    "form": {
+                      "enum": [
+                        "031",
+                        "041",
+                        "051"
+                      ]
+                    },
+                    "sourceHash": {
+                      "type": "string",
+                      "pattern": "^[a-f0-9]{64}$"
+                    },
+                    "retrievedAt": {
+                      "type": "string"
+                    },
+                    "submissionDateRaw": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "rawSourceUrl": {
+                      "type": "string"
+                    },
+                    "formSource": {
+                      "type": "string"
+                    },
+                    "validation": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "passed",
+                        "capitalFramework",
+                        "checks"
+                      ],
+                      "properties": {
+                        "passed": {
+                          "const": true
+                        },
+                        "capitalFramework": {
+                          "enum": [
+                            "CBLR",
+                            "risk_based"
+                          ]
+                        },
+                        "checks": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": [
+                              "name",
+                              "passed",
+                              "inputs"
+                            ],
+                            "properties": {
+                              "name": {
+                                "type": "string"
+                              },
+                              "passed": {
+                                "type": "boolean"
+                              },
+                              "inputs": {
+                                "type": "object",
+                                "additionalProperties": {
+                                  "type": [
+                                    "number",
+                                    "null"
+                                  ]
+                                }
+                              }
+                            }
+                          },
+                          "minItems": 1,
+                          "maxItems": 50
+                        }
+                      }
+                    }
+                  }
+                },
+                "priorReport": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "reportDate",
+                        "form",
+                        "sourceHash",
+                        "retrievedAt",
+                        "submissionDateRaw",
+                        "rawSourceUrl",
+                        "formSource",
+                        "validation"
+                      ],
+                      "properties": {
+                        "reportDate": {
+                          "type": "string",
+                          "pattern": "^[0-9]{4}-(03-31|06-30|09-30|12-31)$"
+                        },
+                        "form": {
+                          "enum": [
+                            "031",
+                            "041",
+                            "051"
+                          ]
+                        },
+                        "sourceHash": {
+                          "type": "string",
+                          "pattern": "^[a-f0-9]{64}$"
+                        },
+                        "retrievedAt": {
+                          "type": "string"
+                        },
+                        "submissionDateRaw": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "rawSourceUrl": {
+                          "type": "string"
+                        },
+                        "formSource": {
+                          "type": "string"
+                        },
+                        "validation": {
+                          "type": "object",
+                          "additionalProperties": false,
+                          "required": [
+                            "passed",
+                            "capitalFramework",
+                            "checks"
+                          ],
+                          "properties": {
+                            "passed": {
+                              "const": true
+                            },
+                            "capitalFramework": {
+                              "enum": [
+                                "CBLR",
+                                "risk_based"
+                              ]
+                            },
+                            "checks": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "additionalProperties": false,
+                                "required": [
+                                  "name",
+                                  "passed",
+                                  "inputs"
+                                ],
+                                "properties": {
+                                  "name": {
+                                    "type": "string"
+                                  },
+                                  "passed": {
+                                    "type": "boolean"
+                                  },
+                                  "inputs": {
+                                    "type": "object",
+                                    "additionalProperties": {
+                                      "type": [
+                                        "number",
+                                        "null"
+                                      ]
+                                    }
+                                  }
+                                }
+                              },
+                              "minItems": 1,
+                              "maxItems": 50
+                            }
+                          }
+                        }
+                      }
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "priorUnavailableReason": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "metrics": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "key",
+                      "label",
+                      "note",
+                      "current",
+                      "prior",
+                      "change"
+                    ],
+                    "properties": {
+                      "key": {
+                        "enum": [
+                          "assets",
+                          "loans",
+                          "deposits",
+                          "nonaccrual",
+                          "allowance",
+                          "cet1Ratio",
+                          "totalCapitalRatio",
+                          "leverageRatio",
+                          "noncurrentLoansRatio",
+                          "allowanceHFIRatio",
+                          "loansDepositsRatio",
+                          "brokeredDomesticDepositRatio",
+                          "cashAssetsRatio",
+                          "equityAssetsRatio",
+                          "fhlbAssetsRatio"
+                        ]
+                      },
+                      "label": {
+                        "type": "string"
+                      },
+                      "note": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "current": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": [
+                          "value",
+                          "unit",
+                          "status",
+                          "reason",
+                          "period",
+                          "reportDate",
+                          "sourceIds",
+                          "formula",
+                          "scopes"
+                        ],
+                        "properties": {
+                          "value": {
+                            "type": [
+                              "number",
+                              "null"
+                            ]
+                          },
+                          "unit": {
+                            "enum": [
+                              "USD",
+                              "percent"
+                            ]
+                          },
+                          "status": {
+                            "enum": [
+                              "reported",
+                              "calculated",
+                              "unavailable",
+                              "not_applicable"
+                            ]
+                          },
+                          "reason": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "period": {
+                            "enum": [
+                              "instant"
+                            ]
+                          },
+                          "reportDate": {
+                            "type": "string",
+                            "pattern": "^[0-9]{4}-(03-31|06-30|09-30|12-31)$"
+                          },
+                          "sourceIds": {
+                            "type": "array",
+                            "items": {
+                              "type": "integer",
+                              "minimum": 0,
+                              "maximum": 29
+                            },
+                            "minItems": 0,
+                            "maxItems": 3
+                          },
+                          "formula": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "scopes": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          }
+                        }
+                      },
+                      "prior": {
+                        "anyOf": [
+                          {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": [
+                              "value",
+                              "unit",
+                              "status",
+                              "reason",
+                              "period",
+                              "reportDate",
+                              "sourceIds",
+                              "formula",
+                              "scopes"
+                            ],
+                            "properties": {
+                              "value": {
+                                "type": [
+                                  "number",
+                                  "null"
+                                ]
+                              },
+                              "unit": {
+                                "enum": [
+                                  "USD",
+                                  "percent"
+                                ]
+                              },
+                              "status": {
+                                "enum": [
+                                  "reported",
+                                  "calculated",
+                                  "unavailable",
+                                  "not_applicable"
+                                ]
+                              },
+                              "reason": {
+                                "type": [
+                                  "string",
+                                  "null"
+                                ]
+                              },
+                              "period": {
+                                "enum": [
+                                  "instant"
+                                ]
+                              },
+                              "reportDate": {
+                                "type": "string",
+                                "pattern": "^[0-9]{4}-(03-31|06-30|09-30|12-31)$"
+                              },
+                              "sourceIds": {
+                                "type": "array",
+                                "items": {
+                                  "type": "integer",
+                                  "minimum": 0,
+                                  "maximum": 29
+                                },
+                                "minItems": 0,
+                                "maxItems": 3
+                              },
+                              "formula": {
+                                "type": [
+                                  "string",
+                                  "null"
+                                ]
+                              },
+                              "scopes": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string"
+                                }
+                              }
+                            }
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "change": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": [
+                          "comparable",
+                          "absoluteDelta",
+                          "growthPercent",
+                          "percentagePointDelta",
+                          "deltaUnit",
+                          "reason"
+                        ],
+                        "properties": {
+                          "comparable": {
+                            "type": "boolean"
+                          },
+                          "absoluteDelta": {
+                            "type": [
+                              "number",
+                              "null"
+                            ]
+                          },
+                          "growthPercent": {
+                            "type": [
+                              "number",
+                              "null"
+                            ]
+                          },
+                          "percentagePointDelta": {
+                            "type": [
+                              "number",
+                              "null"
+                            ]
+                          },
+                          "deltaUnit": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "reason": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          }
+                        }
+                      }
+                    }
+                  },
+                  "minItems": 15,
+                  "maxItems": 15
+                },
+                "sourceCatalog": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "key",
+                      "label",
+                      "value",
+                      "unit",
+                      "period",
+                      "status",
+                      "reason",
+                      "codes",
+                      "basis",
+                      "schedule",
+                      "item",
+                      "formula",
+                      "form",
+                      "capitalFramework",
+                      "reportDate",
+                      "startDate",
+                      "mappingVersion",
+                      "sourceHash",
+                      "sourceUrl",
+                      "rawSourceUrl",
+                      "formSource"
+                    ],
+                    "properties": {
+                      "key": {
+                        "type": "string"
+                      },
+                      "label": {
+                        "type": "string"
+                      },
+                      "value": {
+                        "type": [
+                          "number",
+                          "null"
+                        ]
+                      },
+                      "unit": {
+                        "enum": [
+                          "USD",
+                          "percent"
+                        ]
+                      },
+                      "period": {
+                        "const": "instant"
+                      },
+                      "status": {
+                        "enum": [
+                          "reported",
+                          "calculated",
+                          "unavailable",
+                          "not_applicable"
+                        ]
+                      },
+                      "reason": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "codes": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        },
+                        "minItems": 1,
+                        "maxItems": 8
+                      },
+                      "basis": {
+                        "type": "string"
+                      },
+                      "schedule": {
+                        "type": "string"
+                      },
+                      "item": {
+                        "type": "string"
+                      },
+                      "formula": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "form": {
+                        "enum": [
+                          "031",
+                          "041",
+                          "051"
+                        ]
+                      },
+                      "capitalFramework": {
+                        "enum": [
+                          "CBLR",
+                          "risk_based"
+                        ]
+                      },
+                      "reportDate": {
+                        "type": "string",
+                        "pattern": "^[0-9]{4}-(03-31|06-30|09-30|12-31)$"
+                      },
+                      "startDate": {
+                        "type": "null"
+                      },
+                      "mappingVersion": {
+                        "const": "ffiec-bankscope-v3"
+                      },
+                      "sourceHash": {
+                        "type": "string",
+                        "pattern": "^[a-f0-9]{64}$"
+                      },
+                      "sourceUrl": {
+                        "type": "string"
+                      },
+                      "rawSourceUrl": {
+                        "type": "string"
+                      },
+                      "formSource": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "minItems": 15,
+                  "maxItems": 30
+                }
+              }
+            },
+            "minItems": 1,
+            "maxItems": 4
           },
           "limitations": {
             "type": "array",

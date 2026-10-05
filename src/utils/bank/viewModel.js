@@ -3,6 +3,15 @@ import { CREDIT_SEGMENTS, EXPOSURE_LENSES } from './exposureDefinitions.js';
 
 export const GROUPS = ['Capital', 'Credit quality', 'Funding', 'Earnings', 'Overview'];
 export const PENDING = new Set(['queued', 'running', 'retry']);
+/** Default to this legal bank's newest validated prepared quarter; explicit selections stay exact. */
+export function bankPreparedPeriod(state, rssd, requested = '') {
+  if (requested) return requested;
+  const periods = state?.periods || [];
+  const prepared = (state?.reports || []).filter(report => String(report.id_rssd) === String(rssd)
+    && report.validation?.passed === true && periods.includes(report.report_date))
+    .map(report => report.report_date).sort().at(-1);
+  return prepared || periods[0] || '';
+}
 export function quarterLabel(date) {
   return /^\d{4}-(03-31|06-30|09-30|12-31)$/.test(date || '') ? `Q${Math.ceil(Number(date.slice(5, 7)) / 3)} ${date.slice(0, 4)}` : date || 'Unavailable';
 }

@@ -25,6 +25,8 @@ export const DISCOVERY_REQUESTS = Object.freeze([
   `${ORIGIN}/api/x402/v1/financial-changes?tickers=AAPL%2CMSFT&basis=annual&comparison=year`,
   `${ORIGIN}/api/x402/v1/disclosure-evidence?query=liquidity&limit=10`,
   `${ORIGIN}/api/x402/v1/institutional-overlap?ciks=0001067983%2C0001350694&period=2026-06-30&limit=100&offset=0`,
+  `${ORIGIN}/api/x402/v1/disclosure-topic-packet?cik=0000019617&topics=liquidity%2Ccovenants%2Ccollateral`,
+  `${ORIGIN}/api/x402/v1/bank-risk-batch?rssds=852218%2C480228&period=2026-06-30`,
 ]);
 const TERMS = Object.freeze({ scheme: 'exact', network: X402_DEPLOYMENT_NETWORK, asset: ASSET, amount: '10000', payTo: X402_DEPLOYMENT_PAY_TO });
 

@@ -3,13 +3,31 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import Ajv from 'ajv';
 import { bazaarResourceServerExtension, validateDiscoveryExtension, validateDiscoveryExtensionSpec, sanitizeResourceServiceMetadata, extractDiscoveryInfo } from '@x402/extensions/bazaar';
-import { x402DiscoveryOptions, X402_OUTPUT_SCHEMAS } from '../src/utils/x402Discovery.js';
+import { x402DiscoveryOptions, X402_OUTPUT_SCHEMAS, X402_DISCOVERY_DESCRIPTORS } from '../src/utils/x402Discovery.js';
 import { buildX402Catalog, X402_RESOURCES } from '../src/utils/x402Catalog.js';
 import { buildAnalysisCompany, packAnalysisCompany } from '../src/utils/analysisResearch.js';
 import { createPaidResearchReaders } from '../src/utils/x402Research.js';
 import { X402_SOLANA_NETWORK } from '../src/utils/x402Payments.js';
 
 const validators = Object.fromEntries(Object.entries(X402_OUTPUT_SCHEMAS).map(([id, schema]) => [id, new Ajv({ allErrors: true }).compile(schema)]));
+
+test('OpenAPI payment examples and Bazaar tags identify the actual selected product', () => {
+  const document = JSON.parse(readFileSync(new URL('../public/openapi.json', import.meta.url), 'utf8'));
+  for (const resource of X402_RESOURCES) {
+    const operation = document.paths[resource.path].get;
+    assert.equal(operation['x-x402'].resourceExample, `https://secedgarterminal.com${resource.example}`);
+    assert.equal(operation['x-bazaar'].resourceExample, `https://secedgarterminal.com${resource.example}`);
+    assert.deepEqual(operation['x-bazaar'].tags, X402_DISCOVERY_DESCRIPTORS[resource.id].tags);
+  }
+  for (const id of ['bank-risk-batch', 'disclosure-topic-packet']) {
+    const resource = X402_RESOURCES.find(resource => resource.id === id);
+    const operation = document.paths[resource.path].get;
+    const parameters = Object.fromEntries(operation.parameters.filter(parameter => parameter.in === 'query').map(parameter => [parameter.name, parameter.schema]));
+    assert.deepEqual(parameters, X402_DISCOVERY_DESCRIPTORS[id].inputSchema.properties);
+    const schemaName = operation.responses['200'].content['application/json'].schema.$ref.split('/').at(-1);
+    assert.deepEqual(document.components.schemas[schemaName], X402_OUTPUT_SCHEMAS[id]);
+  }
+});
 
 test('all discovery declarations validate through the genuine SDK after transport enrichment', () => {
   for (const resource of X402_RESOURCES) {
@@ -66,7 +84,7 @@ test('discovery output contracts validate actual prepared-reader responses and r
 });
 
 test('CSV discovery advertises the selected representation and validates with the genuine SDK', () => {
-  for (const id of ['financial-batch', 'fundamental-screen', 'credit-screen', 'financial-changes', 'disclosure-evidence', 'institutional-overlap']) {
+  for (const id of ['financial-batch', 'fundamental-screen', 'credit-screen', 'financial-changes', 'disclosure-evidence', 'institutional-overlap', 'disclosure-topic-packet', 'bank-risk-batch']) {
     const options = x402DiscoveryOptions(id, { format: 'csv' });
     const extension = bazaarResourceServerExtension.enrichDeclaration(options.extensions.bazaar, {
       method: 'GET', routePattern: options.routePattern, adapter: { getPath: () => options.routePattern },
