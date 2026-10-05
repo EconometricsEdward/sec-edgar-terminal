@@ -1,17 +1,23 @@
 import { X402_FINANCIAL_CHANGES_SCHEMA } from './x402FinancialChangesSchema.js';
 import { X402_DISCLOSURE_EVIDENCE_SCHEMA } from './x402DisclosureEvidenceSchema.js';
 import { X402_INSTITUTIONAL_OVERLAP_SCHEMA } from './x402InstitutionalOverlapSchema.js';
+import { X402_BANK_RISK_BATCH_SCHEMA, X402_BANK_RISK_BATCH_DESCRIPTOR } from './x402BankRiskBatchSchema.js';
+import { X402_DISCLOSURE_TOPIC_PACKET_SCHEMA, X402_DISCLOSURE_TOPIC_PACKET_DESCRIPTOR } from './x402DisclosureTopicPacketSchema.js';
 
 const format = { type: 'string', enum: ['json', 'csv'], default: 'json' };
 const ciks = { type: 'string', pattern: '^(?!0000000000)[0-9]{10}(,(?!0000000000)[0-9]{10}){0,9}$', description: 'Unique nonzero zero-padded SEC issuer identifiers.' };
 const query = (properties, required) => ({ type: 'object', additionalProperties: false, properties, required });
 const page = { limit: { type: 'integer', minimum: 1, maximum: 100, default: 100 }, offset: { type: 'integer', minimum: 0, maximum: 9999, default: 0 }, snapshot: { type: 'string', pattern: '^[a-f0-9]{64}$', description: 'Reuse pagination.snapshot with identical manager selection, quarter and sorting.' } };
 export const X402_EVIDENCE_SCHEMAS = Object.freeze({
+  'bank-risk-batch': X402_BANK_RISK_BATCH_SCHEMA,
+  'disclosure-topic-packet': X402_DISCLOSURE_TOPIC_PACKET_SCHEMA,
   'financial-changes': X402_FINANCIAL_CHANGES_SCHEMA,
   'disclosure-evidence': X402_DISCLOSURE_EVIDENCE_SCHEMA,
   'institutional-overlap': X402_INSTITUTIONAL_OVERLAP_SCHEMA,
 });
 export const X402_EVIDENCE_DESCRIPTORS = Object.freeze({
+  'bank-risk-batch': X402_BANK_RISK_BATCH_DESCRIPTOR,
+  'disclosure-topic-packet': X402_DISCLOSURE_TOPIC_PACKET_DESCRIPTOR,
   'financial-changes': {
     routePattern: '/api/x402/v1/financial-changes', tags: ['finance', 'SEC', 'financial-changes', 'evidence', 'csv'],
     input: { tickers: 'AAPL,MSFT', basis: 'annual', comparison: 'year' },

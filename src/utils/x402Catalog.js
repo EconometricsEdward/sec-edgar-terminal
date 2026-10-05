@@ -14,6 +14,26 @@ const PAGE_PARAMETERS = [
 /** This public catalog describes paid delivery, not payment authorization. */
 export const X402_RESOURCES = [
   {
+    id: 'disclosure-topic-packet', name: 'Company disclosure topic packets', path: '/api/x402/v1/disclosure-topic-packet', method: 'GET',
+    description: 'Organize original prepared filing paragraphs across selected liquidity, covenant, collateral and customer-concentration topics into one issuer research packet.',
+    useCase: 'Research several disclosure questions with one source-linked company packet.',
+    includes: ['One to three curated topics with explicit matching rules', 'Full retained paragraphs grouped by filing and section; deduplicated source evidence', 'Per-topic results, candidate bounds, extraction coverage and a stable packet fingerprint'],
+    formats: ['json', 'csv'], limits: 'One exact SEC issuer; 1–3 topics; up to 5 paragraphs and 120 candidates per topic.',
+    parameters: [{ name: 'cik', in: 'query', values: ['One nonzero zero-padded SEC issuer identifier'], default: 'required' }, { name: 'topics', in: 'query', values: ['1–3 of liquidity, covenants, collateral, customer-concentration'], default: 'liquidity,covenants,collateral' }, { name: 'start / end', in: 'query', values: ['Inclusive filing dates within the prepared two-year retention window'], default: 'retention window / today' }, { name: 'format', in: 'query', values: ['json', 'csv'], default: 'json' }],
+    example: '/api/x402/v1/disclosure-topic-packet?cik=0000019617&topics=liquidity%2Ccovenants%2Ccollateral',
+    limitations: 'Prepared retained paragraphs only, with partial extraction. A topic without matching evidence is not proof of absence in a filing or of absence of risk. This packet does not classify risk, establish compliance, or identify changes between complete filings. If every topic has no match, no settlement occurs.',
+  },
+  {
+    id: 'bank-risk-batch', name: 'Bank capital, credit & funding batches', path: '/api/x402/v1/bank-risk-batch', method: 'GET',
+    description: 'Compare selected capital, credit-quality and funding observations across up to four legal banks for one explicit FFIEC Call Report quarter, with source evidence and prior-quarter changes.',
+    useCase: 'Build a comparable bank research table without reconciling separate Call Reports.',
+    includes: ['Fifteen selected reported balances, capital percentages and explicitly defined ratios', 'Optional prior-quarter observations and compatible changes; missing inputs stay unavailable', 'Exact legal-bank RSSDs, report quarter, source hashes, metric codes, validation and calculation inputs'],
+    formats: ['json', 'csv'], limits: '1–4 unique legal-bank RSSDs; one explicit quarter; up to 4 MiB.',
+    parameters: [{ name: 'rssds', in: 'query', values: ['1–4 unique positive numeric RSSD identifiers'], default: 'required' }, { name: 'period', in: 'query', values: ['Explicit prepared quarter end YYYY-MM-DD'], default: 'required' }, { name: 'comparison', in: 'query', values: ['previous', 'none'], default: 'previous' }, { name: 'snapshot', in: 'query', values: ['Exact returned packet fingerprint to reject changed prepared reports'], default: 'current' }, { name: 'format', in: 'query', values: ['json', 'csv'], default: 'json' }],
+    example: '/api/x402/v1/bank-risk-batch?rssds=852218%2C480228&period=2026-06-30',
+    limitations: 'Validated prepared FFIEC reports for the selected legal banks only. Every current report is required; an unavailable prior report leaves comparisons unavailable. Bank identifiers do not imply parent-company ownership or SEC issuer equivalence. Native dollar and percentage units and ratio denominators are preserved. No supervisory rating, credit score or real-time condition is inferred.',
+  },
+  {
     id: 'financial-changes', name: 'Financial change evidence', path: '/api/x402/v1/financial-changes', method: 'GET',
     description: 'Compare latest financial observations with a compatible prior period, preserving units, calculation inputs and SEC evidence in a compact packet.',
     useCase: 'Answer what changed across a watchlist without parsing full financial histories.',

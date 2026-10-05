@@ -10,8 +10,8 @@ import styles from './data-access.module.css';
 export const dynamic = 'force-dynamic';
 
 export const metadata = buildPageMetadata({
-  title: 'SEC Data API — Financial Changes, Disclosure Evidence & Holdings',
-  description: 'Source-linked financial changes, disclosure evidence search and institutional holdings overlap for agents. Prepared JSON and CSV research through x402 access.',
+  title: 'Research Data API — Disclosures, Bank Risk & Financials',
+  description: 'Company disclosure packets, bank capital and funding batches, financial change evidence and institutional holdings for agents. Source-linked JSON and CSV through x402.',
   path: '/data-access',
 });
 
@@ -68,7 +68,7 @@ const PRODUCT_DETAILS: Record<string, { useCase: string; includes: string[]; for
   },
 };
 
-const PRODUCT_ORDER = ['financial-changes', 'disclosure-evidence', 'institutional-overlap', 'financial-batch', 'fundamental-screen', 'credit-screen', 'financials', 'factor-universe', 'refinancing'];
+const PRODUCT_ORDER = ['disclosure-topic-packet', 'bank-risk-batch', 'disclosure-evidence', 'credit-screen', 'financial-changes', 'institutional-overlap', 'financial-batch', 'fundamental-screen', 'financials', 'factor-universe', 'refinancing'];
 const PRODUCT_ICONS = { 'financial-batch': Layers3, 'fundamental-screen': ListFilter, 'credit-screen': ShieldCheck, financials: Braces, 'factor-universe': Database, refinancing: FileDown };
 const requestExample = "curl -i 'https://secedgarterminal.com/api/x402/v1/financial-batch?tickers=AAPL%2CMSFT&basis=annual'";
 
@@ -83,7 +83,7 @@ export default async function DataAccessPage() {
     '@type': 'DataCatalog',
     name: 'SEC EDGAR Terminal machine data products',
     url: 'https://secedgarterminal.com/data-access',
-    description: 'Compact financial-change evidence, prepared disclosure paragraphs, institutional holdings overlap, financial bundles and screens. Starter pricing is 0.01 USDC on Solana per successfully settled bounded GET.',
+    description: 'Company disclosure topic packets, legal-bank capital and funding batches, financial-change evidence, institutional holdings and research screens. Starter pricing is 0.01 USDC on Solana per successfully settled bounded GET.',
     dataset: resources.map(resource => ({
       '@type': 'Dataset',
       name: resource.name,
@@ -108,9 +108,9 @@ export default async function DataAccessPage() {
       <script type='application/ld+json' dangerouslySetInnerHTML={{ __html: JSON.stringify(dataCatalog).replace(/</g, '\\u003c') }} />
       <header className={styles.hero}>
         <div>
-          <p className={styles.eyebrow}>SEC data for agents & developers</p>
+          <p className={styles.eyebrow}>Filing & regulatory data for agents</p>
           <h1>From filing data<br /><span>to your workflow.</span></h1>
-          <p className={styles.intro}>Find what changed in company financials. Retrieve disclosure passages that support your answer. Compare institutional holdings. Get compact prepared evidence for the research your agent needs to finish.</p>
+          <p className={styles.intro}>Research company liquidity and covenant disclosures. Compare bank capital, credit quality and funding. Bring source-linked evidence into your agent’s workflow with prepared research packets, batches and exports.</p>
           <div className={styles.heroActions}>
             <a className={styles.primary} href='#products'>Choose a data product <ArrowRight size={17} aria-hidden='true' /></a>
             <a href='/api/x402'>Machine catalog <ArrowUpRight size={15} aria-hidden='true' /></a>
@@ -142,7 +142,7 @@ export default async function DataAccessPage() {
               <p className={styles.bounds}>{resource.limits || fallback?.limits || resource.limitations}</p>
               <details className={styles.contract}><summary>Request details & limitations</summary><code>GET {resource.path}</code><p>{resource.parameters.map(parameter => `${parameter.name}: ${parameter.values.join(' | ')} (default ${parameter.default})`).join('; ')}</p><p>{resource.limitations}</p></details>
               <a className={styles.inspect} href={resource.example}>Inspect the payment offer <ArrowUpRight size={15} aria-hidden='true' /></a>
-              {['financial-changes', 'disclosure-evidence', 'institutional-overlap'].includes(resource.id) ? <a className={styles.inspect} href={`/api/x402/availability?product=${resource.id}&${resource.example.split('?')[1]}`}>Check prepared coverage free <ArrowUpRight size={15} aria-hidden='true' /></a> : null}
+              {['disclosure-topic-packet', 'bank-risk-batch', 'financial-changes', 'disclosure-evidence', 'institutional-overlap'].includes(resource.id) ? <a className={styles.inspect} href={`/api/x402/availability?product=${resource.id}&${resource.example.split('?')[1]}`}>Check prepared coverage free <ArrowUpRight size={15} aria-hidden='true' /></a> : null}
             </article>;
           })}
         </div>
@@ -156,6 +156,8 @@ export default async function DataAccessPage() {
             <tr><th scope='row'>Understand a company</th><td>Browse statements, charts and SEC evidence.</td><td>Retrieve a prepared model or several company histories together.</td></tr>
             <tr><th scope='row'>Explain a financial change</th><td>Inspect history and reported source inputs.</td><td>Receive compatible latest-versus-baseline observations, changes and compact evidence.</td></tr>
             <tr><th scope='row'>Ground a disclosure answer</th><td>Search and read filings in the public tools.</td><td>Retrieve complete retained paragraphs with exact query verification and source context.</td></tr>
+            <tr><th scope='row'>Research several disclosure topics</th><td>Search each topic and organize the filing evidence.</td><td>Receive one company packet with grouped topic evidence, matching rules and extraction coverage.</td></tr>
+            <tr><th scope='row'>Compare legal banks</th><td>Inspect individual Call Reports and regulatory histories.</td><td>Receive a same-quarter bank batch with native units, ratio inputs and compatible prior-quarter changes.</td></tr>
             <tr><th scope='row'>Compare institutional positions</th><td>Explore historical 13F manager portfolios.</td><td>Receive reconciled same-quarter overlap with per-manager exposure and amendment evidence.</td></tr>
             <tr><th scope='row'>Build a selected universe</th><td>Explore company and sector data through public tools and APIs.</td><td>Request filtered, sorted fundamental or credit results.</td></tr>
             <tr><th scope='row'>Move data into your tools</th><td>Use public summaries and research exports.</td><td>Receive JSON or CSV from the batch and screen endpoints.</td></tr>

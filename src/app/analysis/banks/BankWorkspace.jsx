@@ -7,7 +7,7 @@ import BankSearch from './BankSearch';
 import { startBankPreparationPolling } from './preparationPolling.js';
 import { BANK_COLORS } from '../../../utils/bank/visuals.js';
 import { BANK_METRICS } from '../../../utils/bank/definitions.js';
-import { GROUPS, PENDING, bankHref, bankMetric, bankPageOptions, bankReport, formatBankMetric, metricChange, quarterLabel, unavailableReason } from '../../../utils/bank/viewModel.js';
+import { GROUPS, PENDING, bankHref, bankMetric, bankPageOptions, bankPreparedPeriod, bankReport, formatBankMetric, metricChange, quarterLabel, unavailableReason } from '../../../utils/bank/viewModel.js';
 import styles from './banks.module.css';
 const TrendChart = dynamic(() => import('./BankTrendChart'), { ssr: false, loading: () => <p className={styles.basis}>Loading chart…</p> });
 const BankOrganization = dynamic(() => import('./BankOrganization'));
@@ -39,7 +39,7 @@ export default function BankWorkspace({ initialState, rssd, options: initialOpti
   const bank = state.banks?.find(b => sameBank(b.id_rssd, rssd));
   const banks = [rssd, ...options.peers].map(id => state.banks?.find(b => sameBank(b.id_rssd, id))).filter(Boolean);
   const periods = state.periods || [];
-  const period = options.period || periods[0] || '';
+  const period = bankPreparedPeriod(state, rssd, options.period);
   const navigate = changes => {
     const next = { ...options, period, ...changes };
     const url = bankHref(rssd, next);
