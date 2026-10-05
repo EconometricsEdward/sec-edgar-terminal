@@ -123,11 +123,11 @@ export default function HomePage() {
           <div><p className={styles.eyebrow}>For agents & developers</p><h2 id="data-products-title">Put the research into your workflow.</h2></div>
           <Link href="/data-access" prefetch={false}>Explore the Data API <ArrowRight size={16} aria-hidden="true" /></Link>
         </div>
-        <p className={styles.dataIntro}>Prepared SEC data through paid x402 requests. Batch financials, select a fundamental universe or screen debt and liquidity, with JSON and CSV delivery.</p>
+        <p className={styles.dataIntro}>Prepared research for agents through paid x402 requests. Financial changes, disclosure evidence and institutional holdings overlap, with JSON and CSV delivery.</p>
         <div className={styles.dataGrid}>
-          <Link href="/data-access#financial-batch" prefetch={false}><Layers3 size={21} strokeWidth={1.6} aria-hidden="true" /><h3>Batch company financials</h3><p>Retrieve up to 10 prepared company histories in one request.</p><span>Build a watchlist model <ArrowUpRight size={15} aria-hidden="true" /></span></Link>
-          <Link href="/data-access#fundamental-screen" prefetch={false}><ListFilter size={21} strokeWidth={1.6} aria-hidden="true" /><h3>Screen fundamentals</h3><p>Filter and sort filing-based company metrics, then export a selected page.</p><span>Select a research universe <ArrowUpRight size={15} aria-hidden="true" /></span></Link>
-          <Link href="/data-access#credit-screen" prefetch={false}><Database size={21} strokeWidth={1.6} aria-hidden="true" /><h3>Screen credit data</h3><p>Select prepared debt, liquidity, maturity and coverage measures.</p><span>Focus a refinancing review <ArrowUpRight size={15} aria-hidden="true" /></span></Link>
+          <Link href="/data-access#financial-changes" prefetch={false}><Layers3 size={21} strokeWidth={1.6} aria-hidden="true" /><h3>Explain financial changes</h3><p>Receive compatible period comparisons with compact SEC evidence.</p><span>See what changed <ArrowUpRight size={15} aria-hidden="true" /></span></Link>
+          <Link href="/data-access#disclosure-evidence" prefetch={false}><ListFilter size={21} strokeWidth={1.6} aria-hidden="true" /><h3>Find disclosure evidence</h3><p>Search retained original paragraphs with filing links and coverage.</p><span>Ground an agent answer <ArrowUpRight size={15} aria-hidden="true" /></span></Link>
+          <Link href="/data-access#institutional-overlap" prefetch={false}><Database size={21} strokeWidth={1.6} aria-hidden="true" /><h3>Compare manager holdings</h3><p>Reconcile shared same-quarter institutional positions and reported exposure.</p><span>Find institutional overlap <ArrowUpRight size={15} aria-hidden="true" /></span></Link>
         </div>
         <p className={styles.dataNote}>Starter pricing: 0.01 USDC per successfully settled bounded GET. Public research stays free. Coverage and reporting dates vary; source context travels with the prepared data.</p>
       </section>

@@ -12,7 +12,7 @@ const FACILITATOR = 'https://facilitator.payai.network';
 const MINT = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
 const feePayer = await generateKeyPairSigner();
 const offers = DISCOVERY_REQUESTS.map((url, i) => {
-  const { extensions, ...metadata } = x402DiscoveryOptions(['financials', 'factor-universe', 'refinancing', 'financial-batch', 'fundamental-screen', 'credit-screen'][i]);
+  const { extensions, ...metadata } = x402DiscoveryOptions(['financials', 'factor-universe', 'refinancing', 'financial-batch', 'fundamental-screen', 'credit-screen', 'financial-changes', 'disclosure-evidence', 'institutional-overlap'][i]);
   delete metadata.routePattern;
   extensions.bazaar.info.input.method = 'GET';
   return { x402Version: 2, resource: { url, description: 'Prepared SEC research', mimeType: 'application/json', ...metadata }, extensions,
