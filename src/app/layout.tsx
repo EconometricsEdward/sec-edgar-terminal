@@ -125,6 +125,8 @@ export default function RootLayout({
   return (
     <html lang="en" data-theme-tone="14" suppressHydrationWarning>
       <head>
+        <link rel="alternate" type="application/json" href="/api/x402" />
+        <link rel="service-desc" type="application/vnd.oai.openapi+json" href="/openapi.json" />
         <script
           dangerouslySetInnerHTML={{ __html: READING_BOOTSTRAP_SCRIPT }}
         />
@@ -196,7 +198,6 @@ export default function RootLayout({
                   <Link href="/about" prefetch={false}>
                     About
                   </Link>
-                  <Link href="/data-access" prefetch={false}>Data access</Link>
                   <Link href="/terms" prefetch={false}>Terms</Link>
                   <Link href="/privacy" prefetch={false}>Privacy</Link>
                   <a

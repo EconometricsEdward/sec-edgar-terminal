@@ -111,16 +111,6 @@
 .savedTickers strong { font-size: .8125rem; color: var(--home-accent); }
 .savedTickers small { grid-row: 2; font-size: .75rem; color: var(--home-muted); }
 .savedTickers svg { grid-row: 1; grid-column: 2; }
-.dataProducts { padding: 28px; border: 1px solid var(--home-border); border-top: 2px solid var(--home-green); border-radius: 12px; background: var(--home-panel); }
-.dataIntro { max-width: 870px; font-size: .9375rem !important; }
-.dataGrid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 24px; margin-top: 26px; }
-.dataGrid > a { display: flex; flex-direction: column; min-width: 0; padding-top: 20px; border-top: 1px solid var(--home-border); }
-.dataGrid > a > svg { color: var(--home-green); margin-bottom: 15px; }
-.dataGrid h3 { font-size: 1rem; font-weight: 650; letter-spacing: -.02em; }
-.dataGrid p { font-size: .8125rem; line-height: 1.7; margin-top: 10px; margin-bottom: 16px; }
-.dataGrid span { display: flex; align-items: center; gap: 8px; color: var(--home-accent); font-size: .75rem; margin-top: auto; min-height: 32px; }
-.dataGrid > a:hover h3 { color: var(--home-accent); }
-.dataNote { font-size: .75rem !important; border-top: 1px solid var(--home-border); margin-top: 24px; padding-top: 18px; }
 .sourceNote { display: flex; gap: 22px; align-items: center; padding: 0 0 10px; }
 .sourceNote > svg { color: var(--home-accent); }
 .sourceNote > div { flex: 1; }
@@ -165,7 +155,6 @@
   .toolIntro h2 br { display: none; }
   .sectionHeading { align-items: start; flex-direction: column; gap: 14px; }
   .resumeGrid { gap: 25px; }
-  .dataGrid { gap: 18px; }
 }
 @media (max-width: 560px) {
   .page { gap: 36px; padding-top: 6px; }
@@ -186,8 +175,6 @@
   .featureTop { margin-bottom: 24px; }
   .marketLenses { gap: 8px; }
   .resume { padding: 20px 16px; }
-  .dataProducts { padding: 22px; }
-  .dataGrid { grid-template-columns: 1fr; gap: 18px; }
   .resumeGrid > div { min-height: 220px; }
   .resumeGrid li small { font-size: .6875rem; }
   .sourceNote { align-items: start; gap: 15px; }
