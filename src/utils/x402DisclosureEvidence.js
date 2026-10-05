@@ -105,7 +105,10 @@ function publicCandidate(row, selection, coverage, nowMs) {
     || !integer(row.totalPassages, 1, 200000) || !integer(row.indexedPassages, 1, DISCLOSURE_INDEX_LIMITS.passages)
     || row.indexedPassages > row.totalPassages || typeof row.complete !== 'boolean'
     || row.complete && row.indexedPassages !== row.totalPassages
-    || !integer(passage.index, 0, Math.min(row.totalPassages - 1, 199999))
+    // The parser assigns original ordinals before removing empty paragraphs;
+    // totalPassages counts the retained nonempty paragraphs, so ordinals can
+    // exceed that count. Preserve the producer's independent ordinal bound.
+    || !integer(passage.index, 0, 199999)
     || typeof passage.sectionId !== 'string' || !sectionPattern.test(passage.sectionId) || passage.sectionId === 'all'
     || passage.sectionId.startsWith('8k:') && !['8-K', '8-K/A'].includes(row.form)
     || typeof passage.section !== 'string' || passage.section.length < 1 || passage.section.length > 100

@@ -40,7 +40,7 @@ export const X402_RESOURCES = [
     includes: ['Shared positions with per-manager shares, USD value and portfolio weights', 'Security identity, matching method and amendment-chain sources', 'Complete-input checks, reporting quarter, source-check dates and snapshot-pinned export pages'],
     formats: ['json', 'csv'], limits: '2–4 managers; up to 100 positions per page; up to 4 MiB.',
     parameters: [{ name: 'ciks', in: 'query', values: ['2–4 unique zero-padded manager CIKs'], default: 'required' }, { name: 'period', in: 'query', values: ['Optional retained quarter end'], default: 'aligned latest prepared quarters' }, { name: 'minimumManagers', in: 'query', values: ['2–4, no more than selected managers'], default: '2' }, { name: 'sort / order', in: 'query', values: ['reportedValue or cusip / asc or desc'], default: 'reportedValue / desc' }, ...PAGE_PARAMETERS, { name: 'format', in: 'query', values: ['json', 'csv'], default: 'json' }],
-    example: '/api/x402/v1/institutional-overlap?ciks=0001067983%2C0001350694&limit=100&offset=0',
+    example: '/api/x402/v1/institutional-overlap?ciks=0001067983%2C0001350694&period=2026-06-30&limit=100&offset=0',
     limitations: 'Historical disclosed 13F positions, not current holdings, trades, flows, performance or a complete manager balance sheet. All managers must have complete, uninvalidated prepared evidence for the same quarter; missing prior quarters are unavailable. Stale source checks remain visible.',
   },
   {

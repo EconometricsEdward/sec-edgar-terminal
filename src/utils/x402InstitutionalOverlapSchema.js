@@ -61,9 +61,9 @@ export const X402_INSTITUTIONAL_OVERLAP_SCHEMA = Object.freeze({ type: 'object',
       matchingPositions: { type: 'integer', minimum: 1, maximum: 40000 },
     } },
     rows: { type: 'array', minItems: 1, maxItems: 100, items: row },
-    pagination: { type: 'object', additionalProperties: false, required: ['limit', 'offset', 'total', 'nextOffset', 'snapshot'], properties: {
+    pagination: { type: 'object', additionalProperties: false, required: ['limit', 'offset', 'total', 'nextOffset', 'truncated', 'snapshot'], properties: {
       limit: { type: 'integer', minimum: 1, maximum: 100 }, offset: { type: 'integer', minimum: 0, maximum: 9999 },
-      total: { type: 'integer', minimum: 1, maximum: 40000 }, nextOffset: { type: ['integer', 'null'], minimum: 1 }, snapshot: hash,
+      total: { type: 'integer', minimum: 1, maximum: 40000 }, nextOffset: { type: ['integer', 'null'], minimum: 1, maximum: 9999 }, truncated: { type: 'boolean' }, snapshot: hash,
     } }, limitations: strings,
   },
 });

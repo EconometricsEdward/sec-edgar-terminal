@@ -36,7 +36,7 @@ export const X402_EVIDENCE_DESCRIPTORS = Object.freeze({
   },
   'institutional-overlap': {
     routePattern: '/api/x402/v1/institutional-overlap', tags: ['finance', '13F', 'institutional-holdings', 'overlap', 'csv'],
-    input: { ciks: '0001067983,0001350694', limit: 100, offset: 0 },
+    input: { ciks: '0001067983,0001350694', period: '2026-06-30', limit: 100, offset: 0 },
     inputSchema: query({
       ciks: { ...ciks, pattern: '^(?!0000000000)[0-9]{10}(,(?!0000000000)[0-9]{10}){1,3}$', description: 'Two to four unique manager CIKs with complete prepared portfolios.' },
       period: { type: 'string', pattern: '^[0-9]{4}-(03-31|06-30|09-30|12-31)$', description: 'Exact retained quarter, or omit to require aligned latest prepared quarters.' },

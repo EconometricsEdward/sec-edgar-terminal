@@ -2308,7 +2308,7 @@
           "asset": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
           "amount": "10000",
           "decimals": 6,
-          "resourceExample": "https://secedgarterminal.com/api/x402/v1/institutional-overlap?ciks=0001067983%2C0001350694&limit=100&offset=0",
+          "resourceExample": "https://secedgarterminal.com/api/x402/v1/institutional-overlap?ciks=0001067983%2C0001350694&period=2026-06-30&limit=100&offset=0",
           "formats": [
             "json",
             "csv"
@@ -6452,6 +6452,7 @@
               "offset",
               "total",
               "nextOffset",
+              "truncated",
               "snapshot"
             ],
             "properties": {
@@ -6475,7 +6476,11 @@
                   "integer",
                   "null"
                 ],
-                "minimum": 1
+                "minimum": 1,
+                "maximum": 9999
+              },
+              "truncated": {
+                "type": "boolean"
               },
               "snapshot": {
                 "type": "string",

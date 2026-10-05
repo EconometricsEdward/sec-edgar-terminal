@@ -44,6 +44,22 @@ function harness(overrides = {}) {
   }, now: () => NOW, ...overrides });
   return { read, records, reads };
 }
+function reconcileChainMetadata(value) {
+  const portfolio = value.data.portfolio;
+  portfolio.amendmentCount = portfolio.filings.filter(filing => filing.isAmendment).length;
+  value.sourceChainHash = hash(portfolio.filings);
+  value.data.reports[0] = { period: portfolio.period, filingCount: portfolio.filings.length,
+    latestFiled: portfolio.filings.map(filing => filing.filingDate).sort().at(-1), forms: [...new Set(portfolio.filings.map(filing => filing.form))] };
+  return value;
+}
+function appendSupplement(value, number = 2) {
+  const source = structuredClone(value.data.portfolio.filings.at(-1)), accession = `${value.cik}-26-000003`;
+  const root = `https://www.sec.gov/Archives/edgar/data/${Number(value.cik)}/${accession.replaceAll('-', '')}/`;
+  Object.assign(source, { accession, form: '13F-HR/A', filingDate: '2026-09-20', isAmendment: true, amendmentType: 'NEW HOLDINGS',
+    amendmentNumber: number, superseded: false, indexUrl: `${root}${accession}-index.html`, primaryUrl: `${root}primary.xml`, tableUrls: [`${root}holdings.xml`] });
+  value.data.portfolio.filings.push(source);
+  return reconcileChainMetadata(value);
+}
 function selection(suffix = '') {
   return paidInstitutionalOverlapSelection({ url: `https://example.invalid/api/x402/institutional-overlap?ciks=${A}%2C${B}${suffix}` }, NOW);
 }
@@ -113,6 +129,41 @@ test('stale complete observations remain explicit and are never renewed', async 
   assert.equal(result.snapshot.earliestCheckedAt, checkedAt); assert.equal(JSON.stringify(f.records.get(B)), before);
 });
 
+test('paid completeness requires an actual public baseline, valid source dates, and a coherent amendment chain', async () => {
+  const mutations = [
+    value => { const filing = value.data.portfolio.filings[0]; Object.assign(filing, { form: '13F-HR/A', isAmendment: true, amendmentType: 'NEW HOLDINGS', amendmentNumber: 3 }); },
+    value => { value.data.portfolio.filings[0].isAmendment = true; },
+    value => { value.data.portfolio.filings[0].form = '13F-HR/A'; },
+    value => { value.data.portfolio.filings[0].superseded = true; },
+    value => { value.data.portfolio.filings[0].filingDate = '2030-08-14'; },
+    value => { value.data.portfolio.filings[0].amendmentType = 'NEW HOLDINGS'; },
+    value => { appendSupplement(value, 3); },
+    value => { appendSupplement(value, 1); value.data.portfolio.filings[1].amendmentType = 'UNKNOWN ACTION'; },
+    value => { appendSupplement(value, 1); value.data.portfolio.filings.reverse(); },
+    value => { value.data.portfolio.filings[0].amendmentNumber = 1; },
+  ];
+  for (const mutate of mutations) {
+    const f = harness(), corrupted = snapshot(B, baseRowsB()); mutate(corrupted); reconcileChainMetadata(corrupted);
+    assert.equal(valid13FSnapshot(corrupted, B, '', NOW), true, 'Existing aggregate validator alone accepts this malformed source chain');
+    f.records.set(B, corrupted); const response = await f.read(selection());
+    assert.equal(response.status, 503); assert.equal((await response.json()).code, 'DATA_NOT_PREPARED');
+  }
+  const f = harness(), restatement = appendSupplement(snapshot(B, baseRowsB(), { amended: true }));
+  assert.equal(valid13FSnapshot(restatement, B, '', NOW), true); f.records.set(B, restatement);
+  const response = await f.read(selection()); assert.equal(response.status, 200);
+  const manager = (await response.json()).managers[1]; assert.equal(manager.amendmentCount, 2);
+  assert.deepEqual(manager.filings.map(filing => [filing.amendmentType, filing.amendmentNumber, filing.superseded]),
+    [[null, null, true], ['RESTATEMENT', 1, false], ['NEW HOLDINGS', 2, false]]);
+  const missingSupplement = structuredClone(restatement); missingSupplement.data.portfolio.filings[2].amendmentNumber = 3; reconcileChainMetadata(missingSupplement);
+  f.records.set(B, missingSupplement); assert.equal((await f.read(selection())).status, 503);
+  const originalWithAddition = appendSupplement(snapshot(B, baseRowsB()), 1);
+  f.records.set(B, originalWithAddition); assert.equal((await f.read(selection())).status, 200);
+  const completeRestatement = snapshot(B, baseRowsB(), { amended: true });
+  completeRestatement.data.portfolio.filings.shift(); completeRestatement.data.portfolio.filings[0].amendmentNumber = 3;
+  reconcileChainMetadata(completeRestatement); f.records.set(B, completeRestatement);
+  assert.equal((await f.read(selection())).status, 200, 'A complete restatement can replace the unavailable earlier baseline');
+});
+
 test('latest quarters must align and an unavailable explicit quarter fails atomically', async () => {
   const f = harness(); f.records.set(B, snapshot(B, baseRowsB(), { period: '2026-03-31' }));
   assert.equal((await f.read(selection())).status, 409);
@@ -164,6 +215,15 @@ test('nonmatching manager selections return an uncharged failure', async () => {
   assert.equal((await response.json()).code, 'NO_MATCHING_DATA');
 });
 
+test('very large overlap universes disclose the paging ceiling rather than advertising an invalid next request', async () => {
+  const f = harness(), rows = Array.from({ length: 11000 }, (_, index) => position(String(index).padStart(9, '0'), 1));
+  f.records.set(A, snapshot(A, rows)); f.records.set(B, snapshot(B, rows));
+  const result = await (await f.read(selection('&offset=9900'))).json();
+  assert.equal(result.pagination.total, 11000); assert.equal(result.rows.length, 100);
+  assert.equal(result.pagination.nextOffset, null); assert.equal(result.pagination.truncated, true);
+  assert.equal(result.pairs[0].sharedCount, 11000);
+});
+
 test('CSV gives one security/manager cell per row with safe spreadsheet quoting and source metadata', async () => {
   const f = harness(), response = await f.read(selection('&format=csv&limit=1')), body = await response.text();
   assert.equal(response.status, 200); assert.equal(response.headers.get('Content-Type'), 'text/csv; charset=utf-8');
@@ -183,7 +243,7 @@ test('oversized serializable product bodies fail without a successful paid respo
   for (let index = 3; index <= 16; index++) {
     const base = structuredClone(large.data.portfolio.filings[1]), accession = `${B}-26-${String(index).padStart(6, '0')}`;
     const root = `https://www.sec.gov/Archives/edgar/data/${Number(B)}/${accession.replaceAll('-', '')}/`;
-    Object.assign(base, { accession, indexUrl: `${root}${accession}-index.html`, primaryUrl: `${root}${'x'.repeat(230)}.xml`,
+    Object.assign(base, { accession, amendmentType: 'NEW HOLDINGS', indexUrl: `${root}${accession}-index.html`, primaryUrl: `${root}${'x'.repeat(230)}.xml`,
       tableUrls: Array.from({ length: 15 }, (_, table) => `${root}${'t'.repeat(228)}${String(table).padStart(2, '0')}.xml`), amendmentNumber: index - 1 });
     large.data.portfolio.filings.push(base);
   }

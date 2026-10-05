@@ -108,6 +108,26 @@ test('only reconstructed SEC URLs and explicit public identity fields are delive
   assert.doesNotMatch(JSON.stringify(payload), /secret-|private\.example|preparedText|rawPayloadBytes|"score"|"rank"/);
 });
 
+test('retained paragraph ordinals can exceed the nonempty paragraph count', async () => {
+  // Production retains the parser's ordinal before whitespace-only paragraphs
+  // are filtered. Match its independent index bound and PostgreSQL timestamps.
+  const row = candidate('Liquidity remains adequate.', 6587, {
+    totalPassages: 4298, indexedPassages: 180,
+    indexedAt: '2026-10-04T13:00:00.961744+00:00',
+  });
+  const read = createPaidDisclosureEvidenceReader({ now, search: async () => results([row], {
+    coverage: { ...coverage, passages: 200, lastIndexedAt: '2026-10-04T14:00:00.269814+00:00' },
+  }) });
+  const response = await read(selected());
+  assert.equal(response.status, 200);
+  const payload = await response.json();
+  assert.equal(payload.rows[0].index, 6587);
+  assert.equal(payload.rows[0].totalPassages, 4298);
+  assert.equal(payload.rows[0].indexedPassages, 180);
+  assert.equal(payload.rows[0].quote, row.passage.text);
+  assert.equal(schema(payload), true, JSON.stringify(schema.errors));
+});
+
 test('corrupt source identity, dates, parser and retained paragraph bounds fail closed before delivery', async () => {
   const mutations = [
     row => ({ ...row, cik: '320193' }), row => ({ ...row, accession: 'invalid' }), row => ({ ...row, primaryDoc: '../secret.htm' }),
@@ -118,7 +138,8 @@ test('corrupt source identity, dates, parser and retained paragraph bounds fail 
     row => ({ ...row, sourceRetrievedAt: '2026-02-30T00:00:00Z' }), row => ({ ...row, indexedAt: '2026-10-04T11:00:00Z' }),
     row => ({ ...row, indexedAt: '2026-10-04T16:00:00Z' }), row => ({ ...row, complete: true }),
     row => ({ ...row, indexedPassages: 181 }), row => ({ ...row, passage: { ...row.passage, text: 'liquidity '.repeat(700) } }),
-    row => ({ ...row, passage: { ...row.passage, text: 'liquidity\u0000' } }), row => ({ ...row, passage: { ...row.passage, index: 30 } }),
+    row => ({ ...row, passage: { ...row.passage, text: 'liquidity\u0000' } }), row => ({ ...row, passage: { ...row.passage, index: 200000 } }),
+    row => ({ ...row, passage: { ...row.passage, index: -1 } }), row => ({ ...row, passage: { ...row.passage, index: 0.5 } }),
     row => ({ ...row, passage: { ...row.passage, sectionId: 'all' } }), row => ({ ...row, passage: { ...row.passage, sectionId: '8k:1.05' } }),
   ];
   for (const mutate of mutations) {

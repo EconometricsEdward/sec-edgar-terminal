@@ -55,7 +55,7 @@ function csvCell(value) {
   return `"${safe.replaceAll('"', '""')}"`;
 }
 const columns = ['schemaVersion', 'snapshot', 'period', 'stale', 'generatedAt', 'minimumManagers', 'sort', 'order',
-  'totalMatches', 'offset', 'nextOffset', 'key', 'cusip', 'putCall', 'quantityType', 'managerCount', 'aggregateReportedValueUsd',
+  'totalMatches', 'offset', 'nextOffset', 'paginationTruncated', 'key', 'cusip', 'putCall', 'quantityType', 'managerCount', 'aggregateReportedValueUsd',
   'cik', 'managerName', 'status', 'issuer', 'classTitle', 'quantity', 'valueUsd', 'weightPct', 'totalReportedValueUsd',
   'top5Pct', 'top10Pct', 'reportType', 'confidentialOmitted', 'checkedAt', 'freshUntil', 'observedAt', 'managerStale', 'filings', 'limitations'];
 
@@ -69,7 +69,7 @@ function deliver(payload, format) {
         const manager = managerByCik.get(cell.cik);
         return { schemaVersion: SCHEMA, snapshot: payload.pagination.snapshot, period: payload.period, stale: payload.stale,
           generatedAt: payload.generatedAt, minimumManagers: payload.selection.minimumManagers, sort: payload.selection.sort, order: payload.selection.order,
-          totalMatches: payload.pagination.total, offset: payload.pagination.offset, nextOffset: payload.pagination.nextOffset,
+          totalMatches: payload.pagination.total, offset: payload.pagination.offset, nextOffset: payload.pagination.nextOffset, paginationTruncated: payload.pagination.truncated,
           ...row, ...cell, managerName: manager.name, totalReportedValueUsd: manager.totalValueUsd,
           top5Pct: manager.top5Pct, top10Pct: manager.top10Pct, reportType: manager.reportType,
           confidentialOmitted: manager.confidentialOmitted, checkedAt: manager.checkedAt, freshUntil: manager.freshUntil,
@@ -88,6 +88,38 @@ function deliver(payload, format) {
 }
 
 const sharedCache = create13FCache();
+function completePublicChain(value) {
+  const portfolio = value.data.portfolio, filings = portfolio.filings;
+  const observedDate = value.data.observedAt.slice(0, 10), checkedDate = value.checkedAt.slice(0, 10);
+  for (let index = 0; index < filings.length; index++) {
+    const filing = filings[index], previous = filings[index - 1];
+    if (!['13F-HR', '13F-HR/A'].includes(filing.form) || typeof filing.isAmendment !== 'boolean'
+      || filing.isAmendment !== filing.form.endsWith('/A') || typeof filing.superseded !== 'boolean'
+      || filing.filingDate > checkedDate || filing.filingDate > observedDate
+      || previous && (previous.filingDate > filing.filingDate
+        || previous.filingDate === filing.filingDate && ((previous.amendmentNumber ?? 0) > (filing.amendmentNumber ?? 0)
+          || (previous.amendmentNumber ?? 0) === (filing.amendmentNumber ?? 0) && previous.accession > filing.accession))) return false;
+    if (filing.isAmendment ? !Number.isSafeInteger(filing.amendmentNumber) || filing.amendmentNumber < 1
+      || !['RESTATEMENT', 'NEW HOLDINGS'].includes(filing.amendmentType)
+      : filing.amendmentNumber !== null || filing.amendmentType !== null) return false;
+  }
+  if (portfolio.amendmentCount !== filings.filter(filing => filing.isAmendment).length) return false;
+  let baseline = -1;
+  for (let index = 0; index < filings.length; index++) if (filings[index].amendmentType === 'RESTATEMENT') baseline = index;
+  if (baseline < 0) {
+    // Supplemental additions cannot supply the missing original table.
+    const originals = filings.map((filing, index) => ({ filing, index })).filter(({ filing }) => !filing.isAmendment);
+    if (originals.length !== 1 || originals[0].index !== 0) return false;
+    baseline = 0;
+  } else if (filings.slice(0, baseline).some(filing => filing.amendmentNumber === filings[baseline].amendmentNumber)) return false;
+  if (filings.some((filing, index) => filing.superseded !== (index < baseline))) return false;
+  let previousNumber = filings[baseline].amendmentNumber ?? 0;
+  for (const filing of filings.slice(baseline + 1)) {
+    if (!filing.isAmendment || filing.amendmentType !== 'NEW HOLDINGS' || filing.amendmentNumber !== previousNumber + 1) return false;
+    previousNumber = filing.amendmentNumber;
+  }
+  return true;
+}
 /** Only prepared snapshot reads are allowed; no filing/history loader is called. */
 export function createPaidInstitutionalOverlapReader({ readManager = (cik, period, signal) => sharedCache.readSnapshot(cik, period, signal), now = Date.now } = {}) {
   return async function institutionalOverlap(selection) {
@@ -97,7 +129,7 @@ export function createPaidInstitutionalOverlapReader({ readManager = (cik, perio
     try { saved = await Promise.all(selection.ciks.map(cik => readManager(cik, selection.period, AbortSignal.timeout(8000)))); }
     catch { return unavailable(); }
     if (saved.some((value, index) => value?.invalidatedAt !== undefined
-      || !valid13FSnapshot(value, selection.ciks[index], selection.period, clock))) return unavailable();
+      || !valid13FSnapshot(value, selection.ciks[index], selection.period, clock) || !completePublicChain(value))) return unavailable();
     const periods = new Set(saved.map(value => value.data.selectedPeriod));
     if (periods.size !== 1) return x402DataError('QUARTERS_NOT_ALIGNED', 'Selected managers have different prepared latest quarters. Choose an explicit quarter available for every manager. This request is not charged.', 409);
     const period = saved[0].data.selectedPeriod;
@@ -143,7 +175,8 @@ export function createPaidInstitutionalOverlapReader({ readManager = (cik, perio
     if (selection.snapshot && selection.snapshot !== fingerprint) return x402DataError('SNAPSHOT_CHANGED', 'The prepared observations or comparison criteria changed. Restart pagination without a snapshot token. This request is not charged.', 409);
     if (!rows.length) return x402DataError('NO_MATCHING_DATA', 'No prepared holdings meet the selected minimum manager count. This request is not charged.', 404);
     if (selection.offset >= rows.length) return x402DataError('PAGE_OUT_OF_RANGE', 'The offset is beyond this comparison. This request is not charged.', 416);
-    const nextOffset = selection.offset + selection.limit < rows.length ? selection.offset + selection.limit : null;
+    const remaining = selection.offset + selection.limit < rows.length;
+    const nextOffset = remaining && selection.offset + selection.limit <= 9999 ? selection.offset + selection.limit : null;
     const payload = { schemaVersion: SCHEMA, status: 'ready', period, generatedAt: new Date(clock).toISOString(),
       stale: managers.some(manager => manager.stale), selection: criteria,
       snapshot: { earliestCheckedAt: managers.map(manager => manager.checkedAt).sort()[0], latestCheckedAt: managers.map(manager => manager.checkedAt).sort().at(-1),
@@ -153,13 +186,14 @@ export function createPaidInstitutionalOverlapReader({ readManager = (cik, perio
       coverage: comparison.coverage,
       population: { unionPositions: union.size, totalSharedPositions: allShared.length, matchingPositions: rows.length },
       rows: rows.slice(selection.offset, selection.offset + selection.limit),
-      pagination: { limit: selection.limit, offset: selection.offset, total: rows.length, nextOffset, snapshot: fingerprint },
+      pagination: { limit: selection.limit, offset: selection.offset, total: rows.length, nextOffset, truncated: remaining && nextOffset === null, snapshot: fingerprint },
       limitations: [
         'Reported quarter-end 13F holdings are not current portfolios, total assets, investment performance, purchases, sales, or economic exposure.',
         'Matches require the same CUSIP, put/call designation and share/principal units. Issuer names and class titles remain as reported for each manager. Options stay separate and are not netted or delta-adjusted.',
         'Weighted pair overlap sums the smaller reported-value percentage for each shared position using each complete public table. Aggregate reported value across managers is a ranking aid, not a combined portfolio weight or ownership stake.',
         'Confidential omissions and combination-report scope remain explicit. A missing security is unknown when public scope cannot establish absence. Zero total reported value withholds every percentage.',
         'Each quarter uses the retained public amendment chain observed at the displayed check time. Results can become stale or change after new filings; no freshness SLA is promised.',
+        'Delivery is paginated to at most 100 positions per request and offset 9,999. Counts and pair metrics describe the complete comparison; pagination.truncated marks additional matches beyond this paging boundary.',
         'Every selected manager must have validated complete prepared evidence. Missing, invalidated or expired snapshots fail the whole request without settlement.',
       ] };
     return deliver(payload, selection.format);
