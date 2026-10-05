@@ -74,7 +74,14 @@ test('all eleven query-free catalog URLs expose valid bodyless GET discovery cha
     assert.equal(declaration.info.input.method, 'GET');
     assert.equal(declaration.info.output.type, 'json');
     assert.equal(declaration.info.output.example, undefined);
-    assert.deepEqual(declaration.schema.properties.input.properties.queryParams, X402_DISCOVERY_DESCRIPTORS[resource.id].inputSchema);
+    const querySchema = declaration.schema.properties.input.properties.queryParams;
+    const originalSchema = X402_DISCOVERY_DESCRIPTORS[resource.id].inputSchema;
+    assert.deepEqual(querySchema.properties, originalSchema.properties);
+    assert.equal(querySchema.additionalProperties, false);
+    if (originalSchema.required?.length) {
+      assert.deepEqual(querySchema.anyOf, [{ maxProperties: 0 }, { required: originalSchema.required }]);
+      assert.equal(querySchema.required, undefined);
+    } else assert.deepEqual(querySchema, originalSchema);
     const discovery = extractDiscoveryInfo(offer, {}, true);
     assert.equal(discovery.resourceUrl, url.href);
     if (resource.id === 'financials') {

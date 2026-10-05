@@ -7,7 +7,7 @@ import { encodePaymentRequiredHeader } from '@x402/core/http';
 import { bazaarResourceServerExtension } from '@x402/extensions/bazaar';
 import { x402DiscoveryOptions } from '../src/utils/x402Discovery.js';
 import { X402_DEPLOYMENT_PAY_TO, X402_DEPLOYMENT_NETWORK } from '../src/utils/x402Deployment.js';
-import { checkDiscovery, createEphemeralPayloadBuilder, DISCOVERY_REQUESTS, DISCOVERY_RESOURCES, guardedDiscoveryFetch, loadLocalKeypairSigner, parseDiscoveryArgs, validateOffer, validateDiscoveryProbe } from '../scripts/check-x402-discovery.mjs';
+import { checkDiscovery, createEphemeralPayloadBuilder, DISCOVERY_REQUESTS, DISCOVERY_RESOURCES, guardedDiscoveryFetch, loadLocalKeypairSigner, parseDiscoveryArgs, validateOffer, validateDiscoveryProbe, validateDiscoveryAdmission } from '../scripts/check-x402-discovery.mjs';
 
 const FACILITATOR = 'https://facilitator.payai.network';
 const MINT = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
@@ -25,7 +25,7 @@ const offers = DISCOVERY_REQUESTS.map((url, i) => {
   };
 });
 
-function transport({ register = false, altered = false, probeStatus = 402, alterProbe } = {}) {
+function transport({ register = false, altered = false, probeStatus = 402, alterProbe, admissionStatus = 402, alterAdmission } = {}) {
   const calls = [];
   return { calls, fetch: async (url, init) => {
     calls.push({ url, method: init.method });
@@ -38,16 +38,22 @@ function transport({ register = false, altered = false, probeStatus = 402, alter
       return new Response('', { status: 402, headers: { 'PAYMENT-REQUIRED': encodePaymentRequiredHeader(offer) } });
     }
     if (DISCOVERY_RESOURCES.includes(url)) {
-      assert.equal(init.method, 'HEAD');
+      assert.ok(['GET', 'HEAD'].includes(init.method));
       assert.equal(init.body, undefined);
       const offer = structuredClone(offers[DISCOVERY_RESOURCES.indexOf(url)]);
       offer.resource.url = url;
-      alterProbe?.(offer);
-      return new Response(null, { status: probeStatus, headers: { 'PAYMENT-REQUIRED': encodePaymentRequiredHeader(offer) } });
+      if (init.method === 'HEAD') alterProbe?.(offer);
+      else alterAdmission?.(offer);
+      return new Response(null, { status: init.method === 'HEAD' ? probeStatus : admissionStatus, headers: { 'PAYMENT-REQUIRED': encodePaymentRequiredHeader(offer) } });
     }
     if (url === `${FACILITATOR}/verify`) {
       assert.equal(register, true);
       assert.equal(init.method, 'POST');
+      assert.deepEqual(calls.slice(0, DISCOVERY_REQUESTS.length * 3), [
+        ...DISCOVERY_REQUESTS.map(url => ({ url, method: 'GET' })),
+        ...DISCOVERY_RESOURCES.map(url => ({ url, method: 'HEAD' })),
+        ...DISCOVERY_RESOURCES.map(url => ({ url, method: 'GET' })),
+      ]);
       const body = JSON.parse(init.body);
       assert.deepEqual(body.paymentPayload.accepted, body.paymentRequirements);
       assert.deepEqual(body.paymentPayload.resource, offers.find(offer => offer.resource.url === body.paymentPayload.resource.url).resource);
@@ -65,15 +71,17 @@ function transport({ register = false, altered = false, probeStatus = 402, alter
 test('discovery audit is read-only by default and distinguishes valid offers from unlisted resources', async () => {
   const mock = transport();
   const result = await checkDiscovery({ fetchImpl: mock.fetch, createPayload: () => { throw new Error('Read-only mode must not generate payment payloads'); } });
-  assert.equal(mock.calls.length, DISCOVERY_REQUESTS.length * 3 + 1);
+  assert.equal(mock.calls.length, DISCOVERY_REQUESTS.length * 4 + 1);
   assert.deepEqual(mock.calls.slice(0, DISCOVERY_REQUESTS.length).map(call => call.method), DISCOVERY_REQUESTS.map(() => 'GET'));
   assert.deepEqual(mock.calls.slice(DISCOVERY_REQUESTS.length, DISCOVERY_REQUESTS.length * 2), DISCOVERY_RESOURCES.map(url => ({ url, method: 'HEAD' })));
+  assert.deepEqual(mock.calls.slice(DISCOVERY_REQUESTS.length * 2, DISCOVERY_REQUESTS.length * 3), DISCOVERY_RESOURCES.map(url => ({ url, method: 'GET' })));
   assert.ok(mock.calls.slice(DISCOVERY_REQUESTS.length * 2).every(call => call.method === 'GET'));
   assert.equal(result.resources.length, DISCOVERY_REQUESTS.length);
   assert.equal(result.resources[0].resource, 'https://secedgarterminal.com/api/x402/v1/financials/AAPL');
   assert.equal(result.resources[1].resource, 'https://secedgarterminal.com/api/x402/v1/factor-universe');
   assert.ok(result.resources.every(resource => !resource.listing.listed));
   assert.ok(result.resources.every(resource => resource.probe.method === 'HEAD' && resource.probe.httpStatus === 402 && resource.probe.offer === 'valid' && resource.probe.purchaseMethod === 'GET'));
+  assert.ok(result.resources.every(resource => resource.admission.method === 'GET' && resource.admission.httpStatus === 402 && resource.admission.offer === 'valid'));
   assert.doesNotMatch(JSON.stringify(result), /transaction|signature|keyPair|PAYMENT-REQUIRED/);
   assert.equal(result.catalog.totalForWallet, 0);
 });
@@ -141,10 +149,15 @@ test('discovery transport rejects settlement, signed seller retries, credentials
     [DISCOVERY_RESOURCES[0], { method: 'HEAD', headers: { Cookie: 'credential' } }],
     [DISCOVERY_REQUESTS[0], { method: 'POST', body: '{}' }],
     [DISCOVERY_REQUESTS[0], { method: 'HEAD' }],
-    [DISCOVERY_RESOURCES[0], { method: 'GET' }],
+    [DISCOVERY_RESOURCES[0], { method: 'GET', headers: { 'PAYMENT-SIGNATURE': 'signed' } }],
+    [DISCOVERY_RESOURCES[0], { method: 'GET', headers: { Authorization: 'secret' } }],
+    [DISCOVERY_RESOURCES[0], { method: 'GET', body: '{}' }],
+    [DISCOVERY_RESOURCES[0], { method: 'POST', body: '{}' }],
     [DISCOVERY_RESOURCES[0], { method: 'HEAD', body: '{}' }],
     [`${DISCOVERY_RESOURCES[0]}?basis=annual&format=csv`, { method: 'HEAD' }],
     ['https://secedgarterminal.com/api/x402/v1/financials/MSFT', { method: 'HEAD' }],
+    ['https://secedgarterminal.com/api/x402/v1/financials/MSFT', { method: 'GET' }],
+    [`${DISCOVERY_RESOURCES[3]}?tickers=AAPL`, { method: 'GET' }],
     [`${FACILITATOR}/verify`, { method: 'HEAD' }],
     [`${FACILITATOR}/discovery/resources`, { method: 'HEAD' }],
     ['https://example.com/verify', { method: 'POST', body: '{}' }],
@@ -163,6 +176,16 @@ test('discovery transport permits only fixed query-free seller HEAD probes and p
   });
   for (const resource of DISCOVERY_RESOURCES) await safe(resource, { method: 'head' });
   assert.deepEqual(forwarded, DISCOVERY_RESOURCES.map(url => ({ url, method: 'HEAD', body: undefined, redirect: 'error' })));
+});
+
+test('discovery transport permits only fixed bare GET admission paths without widening arbitrary selections', async () => {
+  const forwarded = [];
+  const safe = guardedDiscoveryFetch(async (url, init) => {
+    forwarded.push({ url, method: init.method, body: init.body, redirect: init.redirect });
+    return new Response(null, { status: 402 });
+  });
+  for (const resource of DISCOVERY_RESOURCES) await safe(resource);
+  assert.deepEqual(forwarded, DISCOVERY_RESOURCES.map(url => ({ url, method: 'GET', body: undefined, redirect: 'error' })));
 });
 
 test('registration refuses every unavailable HEAD probe before loading a keypair, signing or verification', async () => {
@@ -219,10 +242,69 @@ test('the last HEAD probe must validate too and a missing header stops read-only
   }
 });
 
+test('the last bare GET admission failure prevents key loading, signing and every verification request', async () => {
+  const failures = [
+    { status: 400, error: /Expected unpaid admission GET HTTP 402.*received 400/ },
+    { status: 503, error: /Expected unpaid admission GET HTTP 402.*received 503/ },
+    { missingHeader: true, error: /Missing admission GET PAYMENT-REQUIRED header/ },
+    { badTerms: true, error: /Unexpected payment terms/ },
+  ];
+  for (const failure of failures) {
+    for (const register of [false, true]) {
+      const mock = transport({ register });
+      const fetchImpl = async (url, init) => {
+        const response = await mock.fetch(url, init);
+        if (url !== DISCOVERY_RESOURCES.at(-1) || init.method !== 'GET') return response;
+        if (failure.status) return new Response(null, { status: failure.status });
+        if (failure.missingHeader) response.headers.delete('PAYMENT-REQUIRED');
+        if (failure.badTerms) {
+          const offer = structuredClone(offers.at(-1));
+          offer.resource.url = url;
+          offer.accepts[0].amount = '20000';
+          response.headers.set('PAYMENT-REQUIRED', encodePaymentRequiredHeader(offer));
+        }
+        return response;
+      };
+      // An attempted local key load would replace the admission error with the
+      // sanitized unreadable-key error, so matching this proves it was not read.
+      await assert.rejects(checkDiscovery({ register, ...(register ? { keypairPath: '/unreadable/buyer.json' } : {}), fetchImpl }), failure.error);
+      assert.equal(mock.calls.length, DISCOVERY_REQUESTS.length * 3);
+      assert.ok(mock.calls.every(call => call.method !== 'POST'));
+    }
+  }
+  let signatures = 0;
+  const mock = transport({ register: true });
+  const fetchImpl = async (url, init) => {
+    const response = await mock.fetch(url, init);
+    return url === DISCOVERY_RESOURCES.at(-1) && init.method === 'GET' ? new Response(null, { status: 400 }) : response;
+  };
+  await assert.rejects(checkDiscovery({ register: true, fetchImpl, createPayload: () => { signatures++; throw new Error('Must not sign'); } }), /admission GET HTTP 402/);
+  assert.equal(signatures, 0);
+  assert.ok(mock.calls.every(call => call.method !== 'POST'));
+});
+
+test('bare GET admission uses the genuine selected GET schemas and cannot substitute HEAD, unrelated output or payment metadata', () => {
+  const bare = structuredClone(offers.at(-1));
+  bare.resource.url = DISCOVERY_RESOURCES.at(-1);
+  assert.equal(validateDiscoveryAdmission(bare, bare.resource.url), bare.resource.url);
+  for (const change of [
+    offer => { offer.extensions.bazaar.info.input.method = 'HEAD'; },
+    offer => { offer.extensions.bazaar.schema.properties.output.properties.example = { type: 'object' }; },
+    offer => { offer.resource.tags = ['unrelated']; },
+    offer => { offer.payload = { transaction: 'must-not-be-sent' }; },
+    offer => { offer.accepts[0].asset = feePayer.address; },
+  ]) {
+    const altered = structuredClone(bare);
+    change(altered);
+    assert.throws(() => validateDiscoveryAdmission(altered, bare.resource.url));
+  }
+});
+
 test('probe contracts stay distinct from query-bearing purchase offers and verify cannot register a bare URL', async () => {
   const offer = structuredClone(offers[0]);
   offer.resource.url = DISCOVERY_RESOURCES[0];
   assert.equal(validateDiscoveryProbe(offer, DISCOVERY_RESOURCES[0]), DISCOVERY_RESOURCES[0]);
+  assert.equal(validateDiscoveryAdmission(offer, DISCOVERY_RESOURCES[0]), DISCOVERY_RESOURCES[0]);
   assert.throws(() => validateOffer(offer, DISCOVERY_RESOURCES[0]), /Unexpected payment resource/);
   assert.throws(() => validateDiscoveryProbe(offers[0], DISCOVERY_REQUESTS[0]), /Unexpected payment resource/);
   const safe = guardedDiscoveryFetch(() => { throw new Error('Must not forward'); }, { register: true });
