@@ -5,13 +5,13 @@ import { paidProductSelection, paidProductReaders } from './x402Products.js';
 import { x402DataError } from './x402Research.js';
 
 /** Validate selections before any buyer proof, and advertise the selected format. */
-export function createPaidProductRoute(kind, reader, description) {
+export function createPaidProductRoute(kind, reader, description, { select = request => paidProductSelection(request, kind), read } = {}) {
   const handlers = new Map();
   return function GET(request) {
-    const selection = paidProductSelection(request, kind);
+    const selection = select(request);
     if (!selection) return x402DataError('INVALID_SELECTION', 'Use the documented product parameters once, with valid nonempty values. See /data-access and /openapi.json.');
     if (!handlers.has(selection.format)) handlers.set(selection.format, createPaidHandler(
-      (_request, context) => paidProductReaders[reader](context.selection), {
+      (_request, context) => read ? read(context.selection) : paidProductReaders[reader](context.selection), {
         description,
         ...x402DiscoveryOptions(kind, { format: selection.format }),
         mimeType: selection.format === 'csv' ? 'text/csv' : 'application/json',

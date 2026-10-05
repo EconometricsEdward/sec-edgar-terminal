@@ -66,7 +66,7 @@ test('discovery output contracts validate actual prepared-reader responses and r
 });
 
 test('CSV discovery advertises the selected representation and validates with the genuine SDK', () => {
-  for (const id of ['financial-batch', 'fundamental-screen', 'credit-screen']) {
+  for (const id of ['financial-batch', 'fundamental-screen', 'credit-screen', 'financial-changes', 'disclosure-evidence', 'institutional-overlap']) {
     const options = x402DiscoveryOptions(id, { format: 'csv' });
     const extension = bazaarResourceServerExtension.enrichDeclaration(options.extensions.bazaar, {
       method: 'GET', routePattern: options.routePattern, adapter: { getPath: () => options.routePattern },

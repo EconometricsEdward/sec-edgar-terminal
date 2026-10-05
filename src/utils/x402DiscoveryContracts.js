@@ -1,4 +1,5 @@
 import { X402_PRODUCT_RESPONSE_SCHEMAS } from './x402ProductSchemas.js';
+import { X402_EVIDENCE_SCHEMAS, X402_EVIDENCE_DESCRIPTORS } from './x402EvidenceContracts.js';
 
 export const X402_SERVICE_METADATA = Object.freeze({
   serviceName: 'SEC EDGAR Terminal',
@@ -74,10 +75,12 @@ export const X402_OUTPUT_SCHEMAS = Object.freeze({
   'fundamental-screen': screenOutput('edgar.paid-fundamental-screen.v1'),
   'credit-screen': screenOutput('edgar.paid-credit-screen.v1'),
   ...X402_PRODUCT_RESPONSE_SCHEMAS,
+  ...X402_EVIDENCE_SCHEMAS,
 });
 
 const strictQuery = properties => ({ type: 'object', properties, additionalProperties: false });
 export const X402_DISCOVERY_DESCRIPTORS = Object.freeze({
+  ...X402_EVIDENCE_DESCRIPTORS,
   financials: {
     routePattern: '/api/x402/v1/financials/:ticker',
     // Keep SDK path-parameter enrichment, but let facilitator probes target a

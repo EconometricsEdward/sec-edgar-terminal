@@ -10,8 +10,8 @@ import styles from './data-access.module.css';
 export const dynamic = 'force-dynamic';
 
 export const metadata = buildPageMetadata({
-  title: 'SEC Data API — Batch Financials, Fundamental & Credit Screens',
-  description: 'Prepared SEC financial data for agents and developers. Batch company financials, screen fundamentals and credit data, and export JSON or CSV with x402 access.',
+  title: 'SEC Data API — Financial Changes, Disclosure Evidence & Holdings',
+  description: 'Source-linked financial changes, disclosure evidence search and institutional holdings overlap for agents. Prepared JSON and CSV research through x402 access.',
   path: '/data-access',
 });
 
@@ -68,7 +68,7 @@ const PRODUCT_DETAILS: Record<string, { useCase: string; includes: string[]; for
   },
 };
 
-const PRODUCT_ORDER = ['financial-batch', 'fundamental-screen', 'credit-screen', 'financials', 'factor-universe', 'refinancing'];
+const PRODUCT_ORDER = ['financial-changes', 'disclosure-evidence', 'institutional-overlap', 'financial-batch', 'fundamental-screen', 'credit-screen', 'financials', 'factor-universe', 'refinancing'];
 const PRODUCT_ICONS = { 'financial-batch': Layers3, 'fundamental-screen': ListFilter, 'credit-screen': ShieldCheck, financials: Braces, 'factor-universe': Database, refinancing: FileDown };
 const requestExample = "curl -i 'https://secedgarterminal.com/api/x402/v1/financial-batch?tickers=AAPL%2CMSFT&basis=annual'";
 
@@ -83,7 +83,7 @@ export default async function DataAccessPage() {
     '@type': 'DataCatalog',
     name: 'SEC EDGAR Terminal machine data products',
     url: 'https://secedgarterminal.com/data-access',
-    description: 'Prepared SEC financial data, batch financials and derived screening APIs. Starter pricing is 0.01 USDC on Solana per successfully settled bounded GET.',
+    description: 'Compact financial-change evidence, prepared disclosure paragraphs, institutional holdings overlap, financial bundles and screens. Starter pricing is 0.01 USDC on Solana per successfully settled bounded GET.',
     dataset: resources.map(resource => ({
       '@type': 'Dataset',
       name: resource.name,
@@ -110,7 +110,7 @@ export default async function DataAccessPage() {
         <div>
           <p className={styles.eyebrow}>SEC data for agents & developers</p>
           <h1>From filing data<br /><span>to your workflow.</span></h1>
-          <p className={styles.intro}>Retrieve company financials in batches. Screen fundamentals and credit data. Export prepared results with the reporting context and evidence your research needs.</p>
+          <p className={styles.intro}>Find what changed in company financials. Retrieve disclosure passages that support your answer. Compare institutional holdings. Get compact prepared evidence for the research your agent needs to finish.</p>
           <div className={styles.heroActions}>
             <a className={styles.primary} href='#products'>Choose a data product <ArrowRight size={17} aria-hidden='true' /></a>
             <a href='/api/x402'>Machine catalog <ArrowUpRight size={15} aria-hidden='true' /></a>
@@ -128,7 +128,7 @@ export default async function DataAccessPage() {
       </header>
 
       <section className={styles.section} id='products' aria-labelledby='products-title'>
-        <div className={styles.sectionHeader}><p className={styles.eyebrow}>The product catalog</p><h2 id='products-title'>Choose the work you want to save.</h2><p>Use a batch or screen for a focused workflow, or retrieve the prepared models and snapshots for your own pipeline. Each product has explicit bounds; missing values and coverage limitations stay visible.</p></div>
+        <div className={styles.sectionHeader}><p className={styles.eyebrow}>The product catalog</p><h2 id='products-title'>Choose the work you want to save.</h2><p>Use an evidence packet for a specific research question, a batch or screen for a data workflow, or retrieve prepared models for your own pipeline. Check coverage free before purchasing an evidence product.</p></div>
         <div className={styles.resources}>
           {resources.map(resource => {
             const fallback = PRODUCT_DETAILS[resource.id];
@@ -142,6 +142,7 @@ export default async function DataAccessPage() {
               <p className={styles.bounds}>{resource.limits || fallback?.limits || resource.limitations}</p>
               <details className={styles.contract}><summary>Request details & limitations</summary><code>GET {resource.path}</code><p>{resource.parameters.map(parameter => `${parameter.name}: ${parameter.values.join(' | ')} (default ${parameter.default})`).join('; ')}</p><p>{resource.limitations}</p></details>
               <a className={styles.inspect} href={resource.example}>Inspect the payment offer <ArrowUpRight size={15} aria-hidden='true' /></a>
+              {['financial-changes', 'disclosure-evidence', 'institutional-overlap'].includes(resource.id) ? <a className={styles.inspect} href={`/api/x402/availability?product=${resource.id}&${resource.example.split('?')[1]}`}>Check prepared coverage free <ArrowUpRight size={15} aria-hidden='true' /></a> : null}
             </article>;
           })}
         </div>
@@ -153,6 +154,9 @@ export default async function DataAccessPage() {
         <div className={styles.comparison} role='region' aria-label='Public research and paid machine products comparison' tabIndex={0}>
           <table><thead><tr><th scope='col'>Research task</th><th scope='col'>Free public research</th><th scope='col'>Paid machine products</th></tr></thead><tbody>
             <tr><th scope='row'>Understand a company</th><td>Browse statements, charts and SEC evidence.</td><td>Retrieve a prepared model or several company histories together.</td></tr>
+            <tr><th scope='row'>Explain a financial change</th><td>Inspect history and reported source inputs.</td><td>Receive compatible latest-versus-baseline observations, changes and compact evidence.</td></tr>
+            <tr><th scope='row'>Ground a disclosure answer</th><td>Search and read filings in the public tools.</td><td>Retrieve complete retained paragraphs with exact query verification and source context.</td></tr>
+            <tr><th scope='row'>Compare institutional positions</th><td>Explore historical 13F manager portfolios.</td><td>Receive reconciled same-quarter overlap with per-manager exposure and amendment evidence.</td></tr>
             <tr><th scope='row'>Build a selected universe</th><td>Explore company and sector data through public tools and APIs.</td><td>Request filtered, sorted fundamental or credit results.</td></tr>
             <tr><th scope='row'>Move data into your tools</th><td>Use public summaries and research exports.</td><td>Receive JSON or CSV from the batch and screen endpoints.</td></tr>
             <tr><th scope='row'>Complete a paginated pull</th><td>Use the public data contracts available for each surface.</td><td>Pin the returned snapshot across paid pages.</td></tr>
@@ -163,7 +167,7 @@ export default async function DataAccessPage() {
       </section>
 
       <section className={styles.section} aria-labelledby='start-title'>
-        <div className={styles.sectionHeader}><p className={styles.eyebrow}>Integrate once</p><h2 id='start-title'>Inspect the offer. Connect your client.</h2><p>Start with a free catalog and an unsigned request. Review the exact resource, amount, recipient and network before your client authorizes payment. Add <code>format=csv</code> to a batch or screen request for a tabular export; JSON is the default.</p></div>
+        <div className={styles.sectionHeader}><p className={styles.eyebrow}>Integrate once</p><h2 id='start-title'>Check coverage. Connect your client.</h2><p>Start with the free catalog and evidence-product readiness checks. Review the exact resource, amount, recipient and network before your client authorizes payment. Add <code>format=csv</code> to an evidence, batch or screen request for a tabular export; JSON is the default.</p></div>
         <div className={styles.links}><a href='/openapi.json'>OpenAPI document <ArrowUpRight size={15} aria-hidden='true' /></a><a href='/llms.txt'>Agent guide <ArrowUpRight size={15} aria-hidden='true' /></a><a href='/api/x402'>Current resource catalog <ArrowUpRight size={15} aria-hidden='true' /></a></div>
         <pre className={styles.code}><code>{requestExample}</code></pre>
         <ol className={styles.steps}>

@@ -2,8 +2,8 @@
   "openapi": "3.1.0",
   "info": {
     "title": "EDGAR Terminal Research and x402 Data APIs",
-    "version": "2.3.0",
-    "description": "Free public research APIs and six paid machine products: prepared company financials, snapshot pages, multi-company financial bundles, fundamental screens with peer percentiles, and debt/liquidity screens. Paid GETs cost 0.01 USDC on Solana. New batch and screen products support JSON/CSV. Public research remains free; paid products provide selected, normalized delivery rather than exclusive ownership of SEC records. Optional exact-response recovery is available for 24 hours after staging. Consult /api/x402 for availability."
+    "version": "2.4.0",
+    "description": "Free public research APIs and nine paid machine products, including compact financial-change evidence, exact prepared-paragraph disclosure search and reconciled same-quarter institutional holdings overlap. Paid GETs cost 0.01 USDC on Solana. Evidence, batch and screen products support JSON/CSV. Public research remains free. Check evidence product coverage free through /api/x402/availability before purchase. Optional exact-response recovery lasts 24 hours after staging."
   },
   "servers": [
     {
@@ -1134,7 +1134,7 @@
           "Paid x402 data"
         ],
         "summary": "Batch normalized financial histories for one to ten companies",
-        "description": "Cache-only prepared data. One bounded successful response costs 0.01 USDC. Invalid selectors, absent data, no matches, conflicts and oversized responses are not settled. Unknown, duplicate and empty query fields are rejected. format=csv returns RFC 4180 CSV with source, selection and pagination context in columns. Screen snapshot tokens bind both source data and criteria; keep criteria identical on subsequent pages. Financial batches require every selected company to be available and are not historical as-filed archives. Responses are bounded to 4 MiB.",
+        "description": "Bounded cache-only prepared research. A successfully settled response costs 0.01 USDC. Invalid selectors, unavailable or corrupt data, no matching results, conflicts and oversized responses are not settled. Unknown, duplicate and empty query fields are rejected. format=csv returns source-linked CSV; preserve source dates, units, missing values and coverage. Financial data uses latest-filed values rather than an as-filed archive. Disclosure search covers a partial retained paragraph corpus and candidate pagination can change as it updates; hasMore does not guarantee further exact matches. Institutional overlap requires complete aligned manager quarters and preserves classes, options and amendment evidence. Evidence-product coverage can be checked free via /api/x402/availability with product=id and the same query selectors. Responses are bounded to 4 MiB.",
         "security": [
           {
             "X402Payment": []
@@ -1296,7 +1296,7 @@
           "Paid x402 data"
         ],
         "summary": "Screen and rank SEC fundamentals with sector peer percentiles",
-        "description": "Cache-only prepared data. One bounded successful response costs 0.01 USDC. Invalid selectors, absent data, no matches, conflicts and oversized responses are not settled. Unknown, duplicate and empty query fields are rejected. format=csv returns RFC 4180 CSV with source, selection and pagination context in columns. Screen snapshot tokens bind both source data and criteria; keep criteria identical on subsequent pages. Financial batches require every selected company to be available and are not historical as-filed archives. Responses are bounded to 4 MiB.",
+        "description": "Bounded cache-only prepared research. A successfully settled response costs 0.01 USDC. Invalid selectors, unavailable or corrupt data, no matching results, conflicts and oversized responses are not settled. Unknown, duplicate and empty query fields are rejected. format=csv returns source-linked CSV; preserve source dates, units, missing values and coverage. Financial data uses latest-filed values rather than an as-filed archive. Disclosure search covers a partial retained paragraph corpus and candidate pagination can change as it updates; hasMore does not guarantee further exact matches. Institutional overlap requires complete aligned manager quarters and preserves classes, options and amendment evidence. Evidence-product coverage can be checked free via /api/x402/availability with product=id and the same query selectors. Responses are bounded to 4 MiB.",
         "security": [
           {
             "X402Payment": []
@@ -1580,7 +1580,7 @@
           "Paid x402 data"
         ],
         "summary": "Screen debt maturities, cash coverage and interest coverage",
-        "description": "Cache-only prepared data. One bounded successful response costs 0.01 USDC. Invalid selectors, absent data, no matches, conflicts and oversized responses are not settled. Unknown, duplicate and empty query fields are rejected. format=csv returns RFC 4180 CSV with source, selection and pagination context in columns. Screen snapshot tokens bind both source data and criteria; keep criteria identical on subsequent pages. Financial batches require every selected company to be available and are not historical as-filed archives. Responses are bounded to 4 MiB.",
+        "description": "Bounded cache-only prepared research. A successfully settled response costs 0.01 USDC. Invalid selectors, unavailable or corrupt data, no matching results, conflicts and oversized responses are not settled. Unknown, duplicate and empty query fields are rejected. format=csv returns source-linked CSV; preserve source dates, units, missing values and coverage. Financial data uses latest-filed values rather than an as-filed archive. Disclosure search covers a partial retained paragraph corpus and candidate pagination can change as it updates; hasMore does not guarantee further exact matches. Institutional overlap requires complete aligned manager quarters and preserves classes, options and amendment evidence. Evidence-product coverage can be checked free via /api/x402/availability with product=id and the same query selectors. Responses are bounded to 4 MiB.",
         "security": [
           {
             "X402Payment": []
@@ -1882,6 +1882,992 @@
         "responses": {
           "204": {
             "description": "Allowed recovery headers"
+          }
+        }
+      }
+    },
+    "/api/x402/v1/financial-changes": {
+      "get": {
+        "tags": [
+          "Paid x402 data"
+        ],
+        "summary": "Compatible latest-versus-baseline financial changes with compact SEC evidence",
+        "description": "Bounded cache-only prepared research. A successfully settled response costs 0.01 USDC. Invalid selectors, unavailable or corrupt data, no matching results, conflicts and oversized responses are not settled. Unknown, duplicate and empty query fields are rejected. format=csv returns source-linked CSV; preserve source dates, units, missing values and coverage. Financial data uses latest-filed values rather than an as-filed archive. Disclosure search covers a partial retained paragraph corpus and candidate pagination can change as it updates; hasMore does not guarantee further exact matches. Institutional overlap requires complete aligned manager quarters and preserves classes, options and amendment evidence. Evidence-product coverage can be checked free via /api/x402/availability with product=id and the same query selectors. Responses are bounded to 4 MiB.",
+        "security": [
+          {
+            "X402Payment": []
+          }
+        ],
+        "x-x402": {
+          "version": 2,
+          "scheme": "exact",
+          "price": "0.01",
+          "currency": "USDC",
+          "network": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+          "asset": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+          "amount": "10000",
+          "decimals": 6,
+          "resourceExample": "https://secedgarterminal.com/api/x402/v1/financial-changes?tickers=AAPL%2CMSFT&basis=annual&comparison=year",
+          "formats": [
+            "json",
+            "csv"
+          ]
+        },
+        "x-bazaar": {
+          "extension": "bazaar",
+          "serviceName": "SEC EDGAR Terminal",
+          "iconUrl": "https://secedgarterminal.com/favicon.svg",
+          "indexing": "concrete-path",
+          "resourceExample": "https://secedgarterminal.com/api/x402/v1/factor-universe",
+          "tags": [
+            "finance",
+            "SEC",
+            "fundamentals",
+            "sector-analysis"
+          ],
+          "catalog": "https://secedgarterminal.com/api/x402",
+          "description": "Offers include input/path and schema-only output metadata. Discovery indexes concrete paths; financials entries can represent specific supported tickers. The payment resource stays the exact concrete request URL. External listing is facilitator-dependent and is not asserted by this document."
+        },
+        "parameters": [
+          {
+            "name": "tickers",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z][A-Za-z0-9.-]{0,14}(,[A-Za-z][A-Za-z0-9.-]{0,14}){0,9}$",
+              "description": "One to ten unique tickers. Multiple securities of the same issuer are rejected."
+            }
+          },
+          {
+            "name": "basis",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "annual",
+                "quarter",
+                "ytd",
+                "ttm"
+              ],
+              "default": "annual"
+            }
+          },
+          {
+            "name": "comparison",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "year",
+                "previous"
+              ],
+              "default": "year",
+              "description": "Same season a year earlier, or previous standalone quarter/annual period. previous is unavailable for YTD and TTM."
+            }
+          },
+          {
+            "name": "metrics",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "pattern": "^(revenue|operatingIncome|netIncome|operatingCashFlow|freeCashFlow|cash|totalAssets|totalLiabilities|equity|operatingMargin|netMargin|totalDebt)(,(revenue|operatingIncome|netIncome|operatingCashFlow|freeCashFlow|cash|totalAssets|totalLiabilities|equity|operatingMargin|netMargin|totalDebt)){0,11}$",
+              "description": "One to twelve unique supported keys. Omit for eleven core metrics."
+            }
+          },
+          {
+            "name": "format",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "json",
+                "csv"
+              ],
+              "default": "json"
+            }
+          },
+          {
+            "name": "X-X402-Recovery-Token",
+            "in": "header",
+            "required": false,
+            "description": "Optional unique random 32-byte capability encoded as 64 lowercase hexadecimal characters. Generate before the signed purchase and retain privately. Stages exact response before settlement for no-charge retrieval for 24 hours. Never put it in the URL.",
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Selected prepared product. Preserve source context, coverage, missing values and snapshot token.",
+            "headers": {
+              "PAYMENT-RESPONSE": {
+                "$ref": "#/components/headers/PaymentResponse"
+              },
+              "EXTENSION-RESPONSES": {
+                "$ref": "#/components/headers/ExtensionResponses"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaidFinancialChanges"
+                }
+              },
+              "text/csv": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "CSV header and data rows; source and pagination metadata are included in columns."
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/X402BadRequest"
+          },
+          "402": {
+            "$ref": "#/components/responses/X402PaymentRequired"
+          },
+          "404": {
+            "description": "No companies match the selected screen; no settlement."
+          },
+          "409": {
+            "$ref": "#/components/responses/X402Conflict"
+          },
+          "413": {
+            "description": "Prepared product exceeds 4 MiB; choose fewer companies or a smaller page. No settlement."
+          },
+          "416": {
+            "$ref": "#/components/responses/X402PageOutOfRange"
+          },
+          "429": {
+            "$ref": "#/components/responses/X402RateLimited"
+          },
+          "502": {
+            "$ref": "#/components/responses/X402ResourceFailure"
+          },
+          "503": {
+            "$ref": "#/components/responses/X402Unavailable"
+          }
+        },
+        "operationId": "readPaidFinancialChanges"
+      },
+      "head": {
+        "tags": [
+          "Paid x402 data"
+        ],
+        "summary": "HEAD is not supported and never settles payment",
+        "security": [],
+        "responses": {
+          "405": {
+            "$ref": "#/components/responses/X402MethodNotAllowed"
+          }
+        }
+      }
+    },
+    "/api/x402/v1/disclosure-evidence": {
+      "get": {
+        "tags": [
+          "Paid x402 data"
+        ],
+        "summary": "Exact Boolean-matched original prepared disclosure paragraphs",
+        "description": "Bounded cache-only prepared research. A successfully settled response costs 0.01 USDC. Invalid selectors, unavailable or corrupt data, no matching results, conflicts and oversized responses are not settled. Unknown, duplicate and empty query fields are rejected. format=csv returns source-linked CSV; preserve source dates, units, missing values and coverage. Financial data uses latest-filed values rather than an as-filed archive. Disclosure search covers a partial retained paragraph corpus and candidate pagination can change as it updates; hasMore does not guarantee further exact matches. Institutional overlap requires complete aligned manager quarters and preserves classes, options and amendment evidence. Evidence-product coverage can be checked free via /api/x402/availability with product=id and the same query selectors. Responses are bounded to 4 MiB.",
+        "security": [
+          {
+            "X402Payment": []
+          }
+        ],
+        "x-x402": {
+          "version": 2,
+          "scheme": "exact",
+          "price": "0.01",
+          "currency": "USDC",
+          "network": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+          "asset": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+          "amount": "10000",
+          "decimals": 6,
+          "resourceExample": "https://secedgarterminal.com/api/x402/v1/disclosure-evidence?query=liquidity&limit=10",
+          "formats": [
+            "json",
+            "csv"
+          ]
+        },
+        "x-bazaar": {
+          "extension": "bazaar",
+          "serviceName": "SEC EDGAR Terminal",
+          "iconUrl": "https://secedgarterminal.com/favicon.svg",
+          "indexing": "concrete-path",
+          "resourceExample": "https://secedgarterminal.com/api/x402/v1/factor-universe",
+          "tags": [
+            "finance",
+            "SEC",
+            "fundamentals",
+            "sector-analysis"
+          ],
+          "catalog": "https://secedgarterminal.com/api/x402",
+          "description": "Offers include input/path and schema-only output metadata. Discovery indexes concrete paths; financials entries can represent specific supported tickers. The payment resource stays the exact concrete request URL. External listing is facilitator-dependent and is not asserted by this document."
+        },
+        "parameters": [
+          {
+            "name": "query",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 2,
+              "maxLength": 1000,
+              "description": "Literal words, quoted phrases, AND, OR, NOT and parentheses; at most sixteen terms with at least one positive term. Exact matching within each retained original paragraph."
+            }
+          },
+          {
+            "name": "ciks",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "pattern": "^(?!0000000000)[0-9]{10}(,(?!0000000000)[0-9]{10}){0,9}$",
+              "description": "Unique nonzero zero-padded SEC issuer identifiers."
+            }
+          },
+          {
+            "name": "forms",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "Comma-separated supported SEC forms, including optional /A forms. Omit to search all supported prepared forms; see the output schema for the whitelist."
+            }
+          },
+          {
+            "name": "section",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "pattern": "^(all|risk|mda|notes|other|8k:[0-9]\\.[0-9]{2})$",
+              "default": "all"
+            }
+          },
+          {
+            "name": "start",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "description": "Inclusive filing date, within the prepared two-year retention window."
+            }
+          },
+          {
+            "name": "end",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "description": "Inclusive filing date, no later than today."
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 20,
+              "default": 10
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9999,
+              "default": 0
+            }
+          },
+          {
+            "name": "format",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "json",
+                "csv"
+              ],
+              "default": "json"
+            }
+          },
+          {
+            "name": "X-X402-Recovery-Token",
+            "in": "header",
+            "required": false,
+            "description": "Optional unique random 32-byte capability encoded as 64 lowercase hexadecimal characters. Generate before the signed purchase and retain privately. Stages exact response before settlement for no-charge retrieval for 24 hours. Never put it in the URL.",
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Selected prepared product. Preserve source context, coverage, missing values and snapshot token.",
+            "headers": {
+              "PAYMENT-RESPONSE": {
+                "$ref": "#/components/headers/PaymentResponse"
+              },
+              "EXTENSION-RESPONSES": {
+                "$ref": "#/components/headers/ExtensionResponses"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaidDisclosureEvidence"
+                }
+              },
+              "text/csv": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "CSV header and data rows; source and pagination metadata are included in columns."
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/X402BadRequest"
+          },
+          "402": {
+            "$ref": "#/components/responses/X402PaymentRequired"
+          },
+          "404": {
+            "description": "No companies match the selected screen; no settlement."
+          },
+          "409": {
+            "$ref": "#/components/responses/X402Conflict"
+          },
+          "413": {
+            "description": "Prepared product exceeds 4 MiB; choose fewer companies or a smaller page. No settlement."
+          },
+          "416": {
+            "$ref": "#/components/responses/X402PageOutOfRange"
+          },
+          "429": {
+            "$ref": "#/components/responses/X402RateLimited"
+          },
+          "502": {
+            "$ref": "#/components/responses/X402ResourceFailure"
+          },
+          "503": {
+            "$ref": "#/components/responses/X402Unavailable"
+          }
+        },
+        "operationId": "readPaidDisclosureEvidence"
+      },
+      "head": {
+        "tags": [
+          "Paid x402 data"
+        ],
+        "summary": "HEAD is not supported and never settles payment",
+        "security": [],
+        "responses": {
+          "405": {
+            "$ref": "#/components/responses/X402MethodNotAllowed"
+          }
+        }
+      }
+    },
+    "/api/x402/v1/institutional-overlap": {
+      "get": {
+        "tags": [
+          "Paid x402 data"
+        ],
+        "summary": "Reconciled same-quarter shared positions across complete prepared 13F portfolios",
+        "description": "Bounded cache-only prepared research. A successfully settled response costs 0.01 USDC. Invalid selectors, unavailable or corrupt data, no matching results, conflicts and oversized responses are not settled. Unknown, duplicate and empty query fields are rejected. format=csv returns source-linked CSV; preserve source dates, units, missing values and coverage. Financial data uses latest-filed values rather than an as-filed archive. Disclosure search covers a partial retained paragraph corpus and candidate pagination can change as it updates; hasMore does not guarantee further exact matches. Institutional overlap requires complete aligned manager quarters and preserves classes, options and amendment evidence. Evidence-product coverage can be checked free via /api/x402/availability with product=id and the same query selectors. Responses are bounded to 4 MiB.",
+        "security": [
+          {
+            "X402Payment": []
+          }
+        ],
+        "x-x402": {
+          "version": 2,
+          "scheme": "exact",
+          "price": "0.01",
+          "currency": "USDC",
+          "network": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+          "asset": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+          "amount": "10000",
+          "decimals": 6,
+          "resourceExample": "https://secedgarterminal.com/api/x402/v1/institutional-overlap?ciks=0001067983%2C0001350694&period=2026-06-30&limit=100&offset=0",
+          "formats": [
+            "json",
+            "csv"
+          ]
+        },
+        "x-bazaar": {
+          "extension": "bazaar",
+          "serviceName": "SEC EDGAR Terminal",
+          "iconUrl": "https://secedgarterminal.com/favicon.svg",
+          "indexing": "concrete-path",
+          "resourceExample": "https://secedgarterminal.com/api/x402/v1/factor-universe",
+          "tags": [
+            "finance",
+            "SEC",
+            "fundamentals",
+            "sector-analysis"
+          ],
+          "catalog": "https://secedgarterminal.com/api/x402",
+          "description": "Offers include input/path and schema-only output metadata. Discovery indexes concrete paths; financials entries can represent specific supported tickers. The payment resource stays the exact concrete request URL. External listing is facilitator-dependent and is not asserted by this document."
+        },
+        "parameters": [
+          {
+            "name": "ciks",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^(?!0000000000)[0-9]{10}(,(?!0000000000)[0-9]{10}){1,3}$",
+              "description": "Two to four unique manager CIKs with complete prepared portfolios."
+            }
+          },
+          {
+            "name": "period",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9]{4}-(03-31|06-30|09-30|12-31)$",
+              "description": "Exact retained quarter, or omit to require aligned latest prepared quarters."
+            }
+          },
+          {
+            "name": "minimumManagers",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 2,
+              "maximum": 4,
+              "default": 2
+            }
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "reportedValue",
+                "cusip"
+              ],
+              "default": "reportedValue"
+            }
+          },
+          {
+            "name": "order",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "asc",
+                "desc"
+              ],
+              "default": "desc"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 100
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9999,
+              "default": 0
+            }
+          },
+          {
+            "name": "snapshot",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$",
+              "description": "Reuse pagination.snapshot with identical manager selection, quarter and sorting."
+            }
+          },
+          {
+            "name": "format",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "json",
+                "csv"
+              ],
+              "default": "json"
+            }
+          },
+          {
+            "name": "X-X402-Recovery-Token",
+            "in": "header",
+            "required": false,
+            "description": "Optional unique random 32-byte capability encoded as 64 lowercase hexadecimal characters. Generate before the signed purchase and retain privately. Stages exact response before settlement for no-charge retrieval for 24 hours. Never put it in the URL.",
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Selected prepared product. Preserve source context, coverage, missing values and snapshot token.",
+            "headers": {
+              "PAYMENT-RESPONSE": {
+                "$ref": "#/components/headers/PaymentResponse"
+              },
+              "EXTENSION-RESPONSES": {
+                "$ref": "#/components/headers/ExtensionResponses"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaidInstitutionalOverlap"
+                }
+              },
+              "text/csv": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "CSV header and data rows; source and pagination metadata are included in columns."
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/X402BadRequest"
+          },
+          "402": {
+            "$ref": "#/components/responses/X402PaymentRequired"
+          },
+          "404": {
+            "description": "No companies match the selected screen; no settlement."
+          },
+          "409": {
+            "$ref": "#/components/responses/X402Conflict"
+          },
+          "413": {
+            "description": "Prepared product exceeds 4 MiB; choose fewer companies or a smaller page. No settlement."
+          },
+          "416": {
+            "$ref": "#/components/responses/X402PageOutOfRange"
+          },
+          "429": {
+            "$ref": "#/components/responses/X402RateLimited"
+          },
+          "502": {
+            "$ref": "#/components/responses/X402ResourceFailure"
+          },
+          "503": {
+            "$ref": "#/components/responses/X402Unavailable"
+          }
+        },
+        "operationId": "readPaidInstitutionalOverlap"
+      },
+      "head": {
+        "tags": [
+          "Paid x402 data"
+        ],
+        "summary": "HEAD is not supported and never settles payment",
+        "security": [],
+        "responses": {
+          "405": {
+            "$ref": "#/components/responses/X402MethodNotAllowed"
+          }
+        }
+      }
+    },
+    "/api/x402/availability": {
+      "get": {
+        "operationId": "checkEvidenceProductAvailability",
+        "tags": [
+          "Paid x402 data"
+        ],
+        "summary": "Check prepared evidence-product coverage free before authorizing payment",
+        "description": "Use product=financial-changes, disclosure-evidence or institutional-overlap with the same documented query parameters as that paid product. Unknown or incompatible fields are rejected. Returns a fixed readiness summary, stale flag and returned result count; no paid rows, quotes or payment authorization. Do not send payment or recovery headers. Four concurrent checks and thirty starts per minute per runtime. Readiness is checked at response time and does not reserve the data.",
+        "parameters": [
+          {
+            "name": "product",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "financial-changes",
+                "disclosure-evidence",
+                "institutional-overlap"
+              ]
+            }
+          },
+          {
+            "name": "tickers",
+            "in": "query",
+            "required": false,
+            "description": "Supported only for financial-changes. Use that paid product's exact selectors and required fields; other fields are rejected.",
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z][A-Za-z0-9.-]{0,14}(,[A-Za-z][A-Za-z0-9.-]{0,14}){0,9}$",
+              "description": "One to ten unique tickers. Multiple securities of the same issuer are rejected."
+            }
+          },
+          {
+            "name": "basis",
+            "in": "query",
+            "required": false,
+            "description": "Supported only for financial-changes. Use that paid product's exact selectors and required fields; other fields are rejected.",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "annual",
+                "quarter",
+                "ytd",
+                "ttm"
+              ],
+              "default": "annual"
+            }
+          },
+          {
+            "name": "comparison",
+            "in": "query",
+            "required": false,
+            "description": "Supported only for financial-changes. Use that paid product's exact selectors and required fields; other fields are rejected.",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "year",
+                "previous"
+              ],
+              "default": "year",
+              "description": "Same season a year earlier, or previous standalone quarter/annual period. previous is unavailable for YTD and TTM."
+            }
+          },
+          {
+            "name": "metrics",
+            "in": "query",
+            "required": false,
+            "description": "Supported only for financial-changes. Use that paid product's exact selectors and required fields; other fields are rejected.",
+            "schema": {
+              "type": "string",
+              "pattern": "^(revenue|operatingIncome|netIncome|operatingCashFlow|freeCashFlow|cash|totalAssets|totalLiabilities|equity|operatingMargin|netMargin|totalDebt)(,(revenue|operatingIncome|netIncome|operatingCashFlow|freeCashFlow|cash|totalAssets|totalLiabilities|equity|operatingMargin|netMargin|totalDebt)){0,11}$",
+              "description": "One to twelve unique supported keys. Omit for eleven core metrics."
+            }
+          },
+          {
+            "name": "format",
+            "in": "query",
+            "required": false,
+            "description": "Supported only for financial-changes, disclosure-evidence, institutional-overlap. Use that paid product's exact selectors and required fields; other fields are rejected.",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "json",
+                "csv"
+              ],
+              "default": "json"
+            }
+          },
+          {
+            "name": "query",
+            "in": "query",
+            "required": false,
+            "description": "Supported only for disclosure-evidence. Use that paid product's exact selectors and required fields; other fields are rejected.",
+            "schema": {
+              "type": "string",
+              "minLength": 2,
+              "maxLength": 1000,
+              "description": "Literal words, quoted phrases, AND, OR, NOT and parentheses; at most sixteen terms with at least one positive term. Exact matching within each retained original paragraph."
+            }
+          },
+          {
+            "name": "ciks",
+            "in": "query",
+            "required": false,
+            "description": "Supported only for disclosure-evidence, institutional-overlap. Use that paid product's exact selectors and required fields; other fields are rejected.",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^(?!0000000000)[0-9]{10}(,(?!0000000000)[0-9]{10}){0,9}$",
+                  "description": "Unique nonzero zero-padded SEC issuer identifiers."
+                },
+                {
+                  "type": "string",
+                  "pattern": "^(?!0000000000)[0-9]{10}(,(?!0000000000)[0-9]{10}){1,3}$",
+                  "description": "Two to four unique manager CIKs with complete prepared portfolios."
+                }
+              ]
+            }
+          },
+          {
+            "name": "forms",
+            "in": "query",
+            "required": false,
+            "description": "Supported only for disclosure-evidence. Use that paid product's exact selectors and required fields; other fields are rejected.",
+            "schema": {
+              "type": "string",
+              "description": "Comma-separated supported SEC forms, including optional /A forms. Omit to search all supported prepared forms; see the output schema for the whitelist."
+            }
+          },
+          {
+            "name": "section",
+            "in": "query",
+            "required": false,
+            "description": "Supported only for disclosure-evidence. Use that paid product's exact selectors and required fields; other fields are rejected.",
+            "schema": {
+              "type": "string",
+              "pattern": "^(all|risk|mda|notes|other|8k:[0-9]\\.[0-9]{2})$",
+              "default": "all"
+            }
+          },
+          {
+            "name": "start",
+            "in": "query",
+            "required": false,
+            "description": "Supported only for disclosure-evidence. Use that paid product's exact selectors and required fields; other fields are rejected.",
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "description": "Inclusive filing date, within the prepared two-year retention window."
+            }
+          },
+          {
+            "name": "end",
+            "in": "query",
+            "required": false,
+            "description": "Supported only for disclosure-evidence. Use that paid product's exact selectors and required fields; other fields are rejected.",
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "description": "Inclusive filing date, no later than today."
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "description": "Supported only for disclosure-evidence, institutional-overlap. Use that paid product's exact selectors and required fields; other fields are rejected.",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 20,
+                  "default": 10
+                },
+                {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 100,
+                  "default": 100
+                }
+              ]
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "description": "Supported only for disclosure-evidence, institutional-overlap. Use that paid product's exact selectors and required fields; other fields are rejected.",
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9999,
+              "default": 0
+            }
+          },
+          {
+            "name": "period",
+            "in": "query",
+            "required": false,
+            "description": "Supported only for institutional-overlap. Use that paid product's exact selectors and required fields; other fields are rejected.",
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9]{4}-(03-31|06-30|09-30|12-31)$",
+              "description": "Exact retained quarter, or omit to require aligned latest prepared quarters."
+            }
+          },
+          {
+            "name": "minimumManagers",
+            "in": "query",
+            "required": false,
+            "description": "Supported only for institutional-overlap. Use that paid product's exact selectors and required fields; other fields are rejected.",
+            "schema": {
+              "type": "integer",
+              "minimum": 2,
+              "maximum": 4,
+              "default": 2
+            }
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "required": false,
+            "description": "Supported only for institutional-overlap. Use that paid product's exact selectors and required fields; other fields are rejected.",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "reportedValue",
+                "cusip"
+              ],
+              "default": "reportedValue"
+            }
+          },
+          {
+            "name": "order",
+            "in": "query",
+            "required": false,
+            "description": "Supported only for institutional-overlap. Use that paid product's exact selectors and required fields; other fields are rejected.",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "asc",
+                "desc"
+              ],
+              "default": "desc"
+            }
+          },
+          {
+            "name": "snapshot",
+            "in": "query",
+            "required": false,
+            "description": "Supported only for institutional-overlap. Use that paid product's exact selectors and required fields; other fields are rejected.",
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$",
+              "description": "Reuse pagination.snapshot with identical manager selection, quarter and sorting."
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Prepared selection is ready; content is withheld",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "schemaVersion",
+                    "product",
+                    "ready",
+                    "checkedAt",
+                    "stale",
+                    "responseSchema",
+                    "resultCount",
+                    "purchase",
+                    "note"
+                  ],
+                  "properties": {
+                    "schemaVersion": {
+                      "const": "edgar.product-availability.v1"
+                    },
+                    "product": {
+                      "type": "string"
+                    },
+                    "ready": {
+                      "const": true
+                    },
+                    "checkedAt": {
+                      "type": "string"
+                    },
+                    "stale": {
+                      "type": "boolean"
+                    },
+                    "responseSchema": {
+                      "type": "string"
+                    },
+                    "resultCount": {
+                      "type": [
+                        "integer",
+                        "null"
+                      ],
+                      "minimum": 1
+                    },
+                    "purchase": {
+                      "type": "object",
+                      "required": [
+                        "path",
+                        "price",
+                        "currency",
+                        "network"
+                      ],
+                      "properties": {
+                        "path": {
+                          "type": "string"
+                        },
+                        "price": {
+                          "const": "0.01"
+                        },
+                        "currency": {
+                          "const": "USDC"
+                        },
+                        "network": {
+                          "const": "Solana mainnet"
+                        }
+                      }
+                    },
+                    "note": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid product, selectors or supplied payment/recovery headers"
+          },
+          "404": {
+            "description": "No matching prepared selection"
+          },
+          "409": {
+            "description": "Mismatched reporting quarters or changed snapshot"
+          },
+          "413": {
+            "description": "Product exceeds bounded size"
+          },
+          "416": {
+            "description": "Page is out of range"
+          },
+          "429": {
+            "description": "Readiness checks are busy; retry later"
+          },
+          "503": {
+            "description": "Prepared source unavailable or invalid"
           }
         }
       }
@@ -3863,6 +4849,1887 @@
                   }
                 }
               }
+            }
+          }
+        }
+      },
+      "PaidFinancialChanges": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "schemaVersion",
+          "status",
+          "stale",
+          "selection",
+          "companyCount",
+          "companies",
+          "limitations"
+        ],
+        "properties": {
+          "schemaVersion": {
+            "const": "edgar.paid-financial-changes.v1"
+          },
+          "status": {
+            "const": "ready"
+          },
+          "stale": {
+            "type": "boolean"
+          },
+          "selection": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "tickers",
+              "basis",
+              "comparison",
+              "metrics"
+            ],
+            "properties": {
+              "tickers": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "pattern": "^[A-Z][A-Z0-9.-]{0,14}$"
+                },
+                "minItems": 1,
+                "maxItems": 10,
+                "uniqueItems": true
+              },
+              "basis": {
+                "enum": [
+                  "annual",
+                  "quarter",
+                  "ytd",
+                  "ttm"
+                ]
+              },
+              "comparison": {
+                "enum": [
+                  "year",
+                  "previous"
+                ]
+              },
+              "metrics": {
+                "type": "array",
+                "items": {
+                  "enum": [
+                    "revenue",
+                    "operatingIncome",
+                    "netIncome",
+                    "operatingCashFlow",
+                    "freeCashFlow",
+                    "cash",
+                    "totalAssets",
+                    "totalLiabilities",
+                    "equity",
+                    "operatingMargin",
+                    "netMargin",
+                    "totalDebt"
+                  ]
+                },
+                "minItems": 1,
+                "maxItems": 12,
+                "uniqueItems": true
+              }
+            }
+          },
+          "companyCount": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 10
+          },
+          "companies": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "ticker",
+                "cik",
+                "name",
+                "basis",
+                "lens",
+                "businessModel",
+                "fetchedAt",
+                "checkedAt",
+                "freshUntil",
+                "stale",
+                "period",
+                "comparisonPeriod",
+                "metrics",
+                "sourceCatalog",
+                "calculationCatalog",
+                "coverage",
+                "notes"
+              ],
+              "properties": {
+                "ticker": {
+                  "type": "string",
+                  "pattern": "^[A-Z][A-Z0-9.-]{0,14}$"
+                },
+                "cik": {
+                  "type": "string",
+                  "pattern": "^(?!0+$)\\d{10}$"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "basis": {
+                  "enum": [
+                    "annual",
+                    "quarter",
+                    "ytd",
+                    "ttm"
+                  ]
+                },
+                "lens": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "businessModel": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "fetchedAt": {
+                  "type": "string"
+                },
+                "checkedAt": {
+                  "type": "string"
+                },
+                "freshUntil": {
+                  "type": "string"
+                },
+                "stale": {
+                  "type": "boolean"
+                },
+                "period": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "kind",
+                    "start",
+                    "end",
+                    "fiscalYear",
+                    "fiscalPeriod",
+                    "filed",
+                    "form",
+                    "accession"
+                  ],
+                  "properties": {
+                    "kind": {
+                      "enum": [
+                        "annual",
+                        "quarter",
+                        "ytd",
+                        "ttm"
+                      ]
+                    },
+                    "start": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+                    },
+                    "end": {
+                      "type": "string",
+                      "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+                    },
+                    "fiscalYear": {
+                      "type": [
+                        "integer",
+                        "null"
+                      ]
+                    },
+                    "fiscalPeriod": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "filed": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+                    },
+                    "form": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "accession": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  }
+                },
+                "comparisonPeriod": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "kind",
+                        "start",
+                        "end",
+                        "fiscalYear",
+                        "fiscalPeriod",
+                        "filed",
+                        "form",
+                        "accession"
+                      ],
+                      "properties": {
+                        "kind": {
+                          "enum": [
+                            "annual",
+                            "quarter",
+                            "ytd",
+                            "ttm"
+                          ]
+                        },
+                        "start": {
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+                        },
+                        "end": {
+                          "type": "string",
+                          "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+                        },
+                        "fiscalYear": {
+                          "type": [
+                            "integer",
+                            "null"
+                          ]
+                        },
+                        "fiscalPeriod": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "filed": {
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+                        },
+                        "form": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "accession": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        }
+                      }
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "metrics": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "key",
+                      "modelKey",
+                      "label",
+                      "format",
+                      "definition",
+                      "current",
+                      "prior",
+                      "change"
+                    ],
+                    "properties": {
+                      "key": {
+                        "enum": [
+                          "revenue",
+                          "operatingIncome",
+                          "netIncome",
+                          "operatingCashFlow",
+                          "freeCashFlow",
+                          "cash",
+                          "totalAssets",
+                          "totalLiabilities",
+                          "equity",
+                          "operatingMargin",
+                          "netMargin",
+                          "totalDebt"
+                        ]
+                      },
+                      "modelKey": {
+                        "type": "string"
+                      },
+                      "label": {
+                        "type": "string"
+                      },
+                      "format": {
+                        "enum": [
+                          "currency",
+                          "percent"
+                        ]
+                      },
+                      "definition": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": [
+                          "category",
+                          "formula"
+                        ],
+                        "properties": {
+                          "category": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "formula": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          }
+                        }
+                      },
+                      "current": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": [
+                          "value",
+                          "unit",
+                          "unitBasis",
+                          "classification",
+                          "observationPeriod",
+                          "formula",
+                          "reason",
+                          "note",
+                          "sourceIds",
+                          "calculationIds"
+                        ],
+                        "properties": {
+                          "value": {
+                            "type": [
+                              "number",
+                              "null"
+                            ]
+                          },
+                          "unit": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "unitBasis": {
+                            "enum": [
+                              "metric-observation",
+                              "reported-source",
+                              "metric-definition-format",
+                              "not-specified"
+                            ]
+                          },
+                          "classification": {
+                            "enum": [
+                              "reported",
+                              "calculated",
+                              "unavailable"
+                            ]
+                          },
+                          "observationPeriod": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "additionalProperties": false,
+                                "required": [
+                                  "kind",
+                                  "start",
+                                  "end",
+                                  "dateBasis"
+                                ],
+                                "properties": {
+                                  "kind": {
+                                    "enum": [
+                                      "instant",
+                                      "duration"
+                                    ]
+                                  },
+                                  "start": {
+                                    "type": [
+                                      "string",
+                                      "null"
+                                    ],
+                                    "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+                                  },
+                                  "end": {
+                                    "type": "string",
+                                    "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+                                  },
+                                  "dateBasis": {
+                                    "enum": [
+                                      "metric-observation",
+                                      "reported-source",
+                                      "reporting-period-calculation"
+                                    ]
+                                  }
+                                }
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "formula": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "reason": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "note": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "sourceIds": {
+                            "type": "array",
+                            "items": {
+                              "type": "integer",
+                              "minimum": 0
+                            },
+                            "uniqueItems": true,
+                            "maxItems": 128
+                          },
+                          "calculationIds": {
+                            "type": "array",
+                            "items": {
+                              "type": "integer",
+                              "minimum": 0
+                            },
+                            "uniqueItems": true,
+                            "maxItems": 128
+                          }
+                        }
+                      },
+                      "prior": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": [
+                          "value",
+                          "unit",
+                          "unitBasis",
+                          "classification",
+                          "observationPeriod",
+                          "formula",
+                          "reason",
+                          "note",
+                          "sourceIds",
+                          "calculationIds"
+                        ],
+                        "properties": {
+                          "value": {
+                            "type": [
+                              "number",
+                              "null"
+                            ]
+                          },
+                          "unit": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "unitBasis": {
+                            "enum": [
+                              "metric-observation",
+                              "reported-source",
+                              "metric-definition-format",
+                              "not-specified"
+                            ]
+                          },
+                          "classification": {
+                            "enum": [
+                              "reported",
+                              "calculated",
+                              "unavailable"
+                            ]
+                          },
+                          "observationPeriod": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "additionalProperties": false,
+                                "required": [
+                                  "kind",
+                                  "start",
+                                  "end",
+                                  "dateBasis"
+                                ],
+                                "properties": {
+                                  "kind": {
+                                    "enum": [
+                                      "instant",
+                                      "duration"
+                                    ]
+                                  },
+                                  "start": {
+                                    "type": [
+                                      "string",
+                                      "null"
+                                    ],
+                                    "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+                                  },
+                                  "end": {
+                                    "type": "string",
+                                    "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+                                  },
+                                  "dateBasis": {
+                                    "enum": [
+                                      "metric-observation",
+                                      "reported-source",
+                                      "reporting-period-calculation"
+                                    ]
+                                  }
+                                }
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "formula": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "reason": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "note": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "sourceIds": {
+                            "type": "array",
+                            "items": {
+                              "type": "integer",
+                              "minimum": 0
+                            },
+                            "uniqueItems": true,
+                            "maxItems": 128
+                          },
+                          "calculationIds": {
+                            "type": "array",
+                            "items": {
+                              "type": "integer",
+                              "minimum": 0
+                            },
+                            "uniqueItems": true,
+                            "maxItems": 128
+                          }
+                        }
+                      },
+                      "change": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": [
+                          "absoluteDelta",
+                          "growthPercent",
+                          "percentagePointDelta",
+                          "deltaUnit",
+                          "comparable",
+                          "reason"
+                        ],
+                        "properties": {
+                          "absoluteDelta": {
+                            "type": [
+                              "number",
+                              "null"
+                            ]
+                          },
+                          "growthPercent": {
+                            "type": [
+                              "number",
+                              "null"
+                            ]
+                          },
+                          "percentagePointDelta": {
+                            "type": [
+                              "number",
+                              "null"
+                            ]
+                          },
+                          "deltaUnit": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "comparable": {
+                            "type": "boolean"
+                          },
+                          "reason": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          }
+                        }
+                      }
+                    }
+                  },
+                  "minItems": 1,
+                  "maxItems": 12
+                },
+                "sourceCatalog": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "taxonomy",
+                      "tag",
+                      "unit",
+                      "start",
+                      "end",
+                      "value",
+                      "accession",
+                      "filed",
+                      "form",
+                      "documentUrl",
+                      "sourceCik",
+                      "revised",
+                      "scopeNote",
+                      "revisionNote",
+                      "label"
+                    ],
+                    "properties": {
+                      "taxonomy": {
+                        "type": "string"
+                      },
+                      "tag": {
+                        "type": "string"
+                      },
+                      "unit": {
+                        "type": "string"
+                      },
+                      "start": {
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+                      },
+                      "end": {
+                        "type": "string",
+                        "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+                      },
+                      "value": {
+                        "type": "number"
+                      },
+                      "accession": {
+                        "type": "string",
+                        "pattern": "^\\d{10}-\\d{2}-\\d{6}$"
+                      },
+                      "filed": {
+                        "type": "string",
+                        "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+                      },
+                      "form": {
+                        "type": "string"
+                      },
+                      "documentUrl": {
+                        "type": "string",
+                        "format": "uri"
+                      },
+                      "sourceCik": {
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "pattern": "^(?!0+$)\\d{10}$"
+                      },
+                      "revised": {
+                        "type": "boolean"
+                      },
+                      "scopeNote": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "revisionNote": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "label": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      }
+                    }
+                  },
+                  "maxItems": 512
+                },
+                "calculationCatalog": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "formula",
+                      "label",
+                      "value",
+                      "start",
+                      "end",
+                      "unit"
+                    ],
+                    "properties": {
+                      "formula": {
+                        "type": "string"
+                      },
+                      "label": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "value": {
+                        "type": [
+                          "number",
+                          "null"
+                        ]
+                      },
+                      "start": {
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+                      },
+                      "end": {
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+                      },
+                      "unit": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      }
+                    }
+                  },
+                  "maxItems": 512
+                },
+                "coverage": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "requestedMetrics",
+                    "comparableMetrics",
+                    "preparedHistoryPeriods"
+                  ],
+                  "properties": {
+                    "requestedMetrics": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 12
+                    },
+                    "comparableMetrics": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 12
+                    },
+                    "preparedHistoryPeriods": {
+                      "type": "integer",
+                      "minimum": 1
+                    }
+                  }
+                },
+                "notes": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              }
+            },
+            "minItems": 1,
+            "maxItems": 10
+          },
+          "limitations": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "PaidDisclosureEvidence": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "schemaVersion",
+          "status",
+          "generatedAt",
+          "selection",
+          "coverage",
+          "pagination",
+          "rows",
+          "limitations"
+        ],
+        "properties": {
+          "schemaVersion": {
+            "const": "edgar.paid-disclosure-evidence.v1"
+          },
+          "status": {
+            "const": "ready"
+          },
+          "generatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "selection": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "query",
+              "ciks",
+              "forms",
+              "section",
+              "start",
+              "end"
+            ],
+            "properties": {
+              "query": {
+                "type": "string",
+                "minLength": 2,
+                "maxLength": 1000
+              },
+              "ciks": {
+                "type": "array",
+                "maxItems": 10,
+                "uniqueItems": true,
+                "items": {
+                  "type": "string",
+                  "pattern": "^(?!0000000000)[0-9]{10}$"
+                }
+              },
+              "forms": {
+                "type": "array",
+                "maxItems": 26,
+                "uniqueItems": true,
+                "items": {
+                  "enum": [
+                    "10-K",
+                    "10-K/A",
+                    "10-Q",
+                    "10-Q/A",
+                    "8-K",
+                    "8-K/A",
+                    "20-F",
+                    "20-F/A",
+                    "40-F",
+                    "40-F/A",
+                    "6-K",
+                    "6-K/A",
+                    "S-1",
+                    "S-1/A",
+                    "S-3",
+                    "S-3/A",
+                    "S-4",
+                    "S-4/A",
+                    "DEF 14A",
+                    "DEF 14A/A",
+                    "DEFM14A",
+                    "DEFM14A/A",
+                    "N-CSR",
+                    "N-CSR/A",
+                    "NPORT-P",
+                    "NPORT-P/A"
+                  ]
+                }
+              },
+              "section": {
+                "type": "string",
+                "pattern": "^(all|other|risk|mda|notes|8k:[0-9]\\.[0-9]{2})$"
+              },
+              "start": {
+                "type": "string",
+                "format": "date"
+              },
+              "end": {
+                "type": "string",
+                "format": "date"
+              }
+            }
+          },
+          "coverage": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "scope",
+              "partial",
+              "documents",
+              "indexedPassages",
+              "oldestFilingDate",
+              "newestFilingDate",
+              "lastIndexedAt",
+              "retentionDays",
+              "parserVersion",
+              "queryVerification"
+            ],
+            "properties": {
+              "scope": {
+                "const": "partial-prepared-paragraph-corpus"
+              },
+              "partial": {
+                "const": true
+              },
+              "documents": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 600
+              },
+              "indexedPassages": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 108000
+              },
+              "oldestFilingDate": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "format": "date"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "newestFilingDate": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "format": "date"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "lastIndexedAt": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "format": "date-time"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "retentionDays": {
+                "const": 730
+              },
+              "parserVersion": {
+                "const": 1
+              },
+              "queryVerification": {
+                "const": "exact-boolean-on-full-retained-paragraph"
+              }
+            }
+          },
+          "pagination": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "offset",
+              "limit",
+              "rawCandidatesReturned",
+              "rawCandidatesScanned",
+              "verifiedReturned",
+              "nextOffset",
+              "hasMore",
+              "windowLimited",
+              "moreMeaning"
+            ],
+            "properties": {
+              "offset": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9999
+              },
+              "limit": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 20
+              },
+              "rawCandidatesReturned": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 120
+              },
+              "rawCandidatesScanned": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 120
+              },
+              "verifiedReturned": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 20
+              },
+              "nextOffset": {
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9999
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "hasMore": {
+                "type": "boolean"
+              },
+              "windowLimited": {
+                "type": "boolean"
+              },
+              "moreMeaning": {
+                "const": "additional-candidates-not-confirmed-exact-matches"
+              }
+            }
+          },
+          "rows": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 20,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "cik",
+                "ticker",
+                "companyName",
+                "accession",
+                "primaryDoc",
+                "form",
+                "filingDate",
+                "sourceUrl",
+                "sourceRetrievedAt",
+                "indexedAt",
+                "index",
+                "sectionId",
+                "section",
+                "quote",
+                "fingerprint",
+                "documentFingerprint",
+                "indexedPassages",
+                "totalPassages",
+                "documentComplete",
+                "parserVersion",
+                "identityProof"
+              ],
+              "properties": {
+                "cik": {
+                  "type": "string",
+                  "pattern": "^(?!0000000000)[0-9]{10}$"
+                },
+                "ticker": {
+                  "type": "string",
+                  "pattern": "^[A-Z0-9.-]{0,15}$"
+                },
+                "companyName": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 250
+                },
+                "accession": {
+                  "type": "string",
+                  "pattern": "^[0-9]{10}-[0-9]{2}-[0-9]{6}$"
+                },
+                "primaryDoc": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 250
+                },
+                "form": {
+                  "enum": [
+                    "10-K",
+                    "10-K/A",
+                    "10-Q",
+                    "10-Q/A",
+                    "8-K",
+                    "8-K/A",
+                    "20-F",
+                    "20-F/A",
+                    "40-F",
+                    "40-F/A",
+                    "6-K",
+                    "6-K/A",
+                    "S-1",
+                    "S-1/A",
+                    "S-3",
+                    "S-3/A",
+                    "S-4",
+                    "S-4/A",
+                    "DEF 14A",
+                    "DEF 14A/A",
+                    "DEFM14A",
+                    "DEFM14A/A",
+                    "N-CSR",
+                    "N-CSR/A",
+                    "NPORT-P",
+                    "NPORT-P/A"
+                  ]
+                },
+                "filingDate": {
+                  "type": "string",
+                  "format": "date"
+                },
+                "sourceUrl": {
+                  "type": "string",
+                  "pattern": "^https://www\\.sec\\.gov/Archives/edgar/data/"
+                },
+                "sourceRetrievedAt": {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                "indexedAt": {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                "index": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 199999
+                },
+                "sectionId": {
+                  "type": "string",
+                  "pattern": "^(other|risk|mda|notes|8k:[0-9]\\.[0-9]{2})$"
+                },
+                "section": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 100
+                },
+                "quote": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 6000
+                },
+                "fingerprint": {
+                  "type": "string",
+                  "pattern": "^[a-f0-9]{64}$"
+                },
+                "documentFingerprint": {
+                  "type": "string",
+                  "pattern": "^[a-f0-9]{64}$"
+                },
+                "indexedPassages": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 180
+                },
+                "totalPassages": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 200000
+                },
+                "documentComplete": {
+                  "type": "boolean"
+                },
+                "parserVersion": {
+                  "const": 1
+                },
+                "identityProof": {
+                  "const": "retained-sec-document-identifiers"
+                }
+              }
+            }
+          },
+          "limitations": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "PaidInstitutionalOverlap": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "schemaVersion",
+          "status",
+          "period",
+          "generatedAt",
+          "stale",
+          "selection",
+          "snapshot",
+          "managers",
+          "pairs",
+          "coverage",
+          "population",
+          "rows",
+          "pagination",
+          "limitations"
+        ],
+        "properties": {
+          "schemaVersion": {
+            "const": "edgar.paid-institutional-overlap.v1"
+          },
+          "status": {
+            "const": "ready"
+          },
+          "period": {
+            "type": "string",
+            "pattern": "^[0-9]{4}-(03-31|06-30|09-30|12-31)$"
+          },
+          "generatedAt": {
+            "type": "string"
+          },
+          "stale": {
+            "type": "boolean"
+          },
+          "selection": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "ciks",
+              "requestedPeriod",
+              "minimumManagers",
+              "sort",
+              "order"
+            ],
+            "properties": {
+              "ciks": {
+                "type": "array",
+                "minItems": 2,
+                "maxItems": 4,
+                "uniqueItems": true,
+                "items": {
+                  "type": "string",
+                  "pattern": "^(?!0000000000)[0-9]{10}$"
+                }
+              },
+              "requestedPeriod": {
+                "type": "string"
+              },
+              "minimumManagers": {
+                "type": "integer",
+                "minimum": 2,
+                "maximum": 4
+              },
+              "sort": {
+                "enum": [
+                  "reportedValue",
+                  "cusip"
+                ]
+              },
+              "order": {
+                "enum": [
+                  "asc",
+                  "desc"
+                ]
+              }
+            }
+          },
+          "snapshot": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "earliestCheckedAt",
+              "latestCheckedAt",
+              "observations"
+            ],
+            "properties": {
+              "earliestCheckedAt": {
+                "type": "string"
+              },
+              "latestCheckedAt": {
+                "type": "string"
+              },
+              "observations": {
+                "type": "array",
+                "minItems": 2,
+                "maxItems": 4,
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "cik",
+                    "checkedAt",
+                    "freshUntil",
+                    "observedAt",
+                    "stale",
+                    "sourceChainHash"
+                  ],
+                  "properties": {
+                    "cik": {
+                      "type": "string",
+                      "pattern": "^(?!0000000000)[0-9]{10}$"
+                    },
+                    "checkedAt": {
+                      "type": "string"
+                    },
+                    "freshUntil": {
+                      "type": "string"
+                    },
+                    "observedAt": {
+                      "type": "string"
+                    },
+                    "stale": {
+                      "type": "boolean"
+                    },
+                    "sourceChainHash": {
+                      "type": "string",
+                      "pattern": "^[a-f0-9]{64}$"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "managers": {
+            "type": "array",
+            "minItems": 2,
+            "maxItems": 4,
+            "items": {
+              "type": "object",
+              "required": [
+                "cik",
+                "name",
+                "period",
+                "status",
+                "complete",
+                "totalValueUsd",
+                "positionCount",
+                "top5Pct",
+                "top10Pct",
+                "confidentialOmitted",
+                "publicScopeLimited",
+                "absenceKnown",
+                "reportType",
+                "amendmentCount",
+                "filings",
+                "checkedAt",
+                "freshUntil",
+                "observedAt",
+                "stale"
+              ],
+              "properties": {
+                "cik": {
+                  "type": "string",
+                  "pattern": "^(?!0000000000)[0-9]{10}$"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "period": {
+                  "type": "string",
+                  "pattern": "^[0-9]{4}-(03-31|06-30|09-30|12-31)$"
+                },
+                "status": {
+                  "const": "ready"
+                },
+                "complete": {
+                  "const": true
+                },
+                "totalValueUsd": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "positionCount": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 20000
+                },
+                "top5Pct": {
+                  "type": [
+                    "number",
+                    "null"
+                  ],
+                  "minimum": 0,
+                  "maximum": 100
+                },
+                "top10Pct": {
+                  "type": [
+                    "number",
+                    "null"
+                  ],
+                  "minimum": 0,
+                  "maximum": 100
+                },
+                "confidentialOmitted": {
+                  "type": "boolean"
+                },
+                "publicScopeLimited": {
+                  "type": "boolean"
+                },
+                "absenceKnown": {
+                  "type": "boolean"
+                },
+                "reportType": {
+                  "enum": [
+                    "13F HOLDINGS REPORT",
+                    "13F COMBINATION REPORT"
+                  ]
+                },
+                "amendmentCount": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 16
+                },
+                "filings": {
+                  "type": "array",
+                  "minItems": 1,
+                  "maxItems": 16,
+                  "items": {
+                    "type": "object",
+                    "required": [
+                      "accession",
+                      "form",
+                      "filingDate",
+                      "indexUrl",
+                      "primaryUrl",
+                      "tableUrls",
+                      "isAmendment",
+                      "amendmentType",
+                      "amendmentNumber",
+                      "superseded"
+                    ],
+                    "properties": {
+                      "accession": {
+                        "type": "string",
+                        "pattern": "^[0-9]{10}-[0-9]{2}-[0-9]{6}$"
+                      },
+                      "form": {
+                        "enum": [
+                          "13F-HR",
+                          "13F-HR/A"
+                        ]
+                      },
+                      "filingDate": {
+                        "type": "string"
+                      },
+                      "indexUrl": {
+                        "type": "string"
+                      },
+                      "primaryUrl": {
+                        "type": "string"
+                      },
+                      "tableUrls": {
+                        "type": "array",
+                        "minItems": 1,
+                        "maxItems": 15,
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "isAmendment": {
+                        "type": "boolean"
+                      },
+                      "amendmentType": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "amendmentNumber": {
+                        "type": [
+                          "integer",
+                          "null"
+                        ],
+                        "minimum": 1
+                      },
+                      "superseded": {
+                        "type": "boolean"
+                      }
+                    }
+                  }
+                },
+                "checkedAt": {
+                  "type": "string"
+                },
+                "freshUntil": {
+                  "type": "string"
+                },
+                "observedAt": {
+                  "type": "string"
+                },
+                "stale": {
+                  "type": "boolean"
+                }
+              }
+            }
+          },
+          "pairs": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 6,
+            "items": {
+              "type": "object",
+              "required": [
+                "key",
+                "leftCik",
+                "rightCik",
+                "complete",
+                "percentagesAvailable",
+                "publicScopeLimited",
+                "sharedCount",
+                "unionCount",
+                "jaccardPct",
+                "overlapPct",
+                "leftCommonValueUsd",
+                "rightCommonValueUsd",
+                "leftCommonSharePct",
+                "rightCommonSharePct"
+              ],
+              "properties": {
+                "key": {
+                  "type": "string"
+                },
+                "leftCik": {
+                  "type": "string",
+                  "pattern": "^(?!0000000000)[0-9]{10}$"
+                },
+                "rightCik": {
+                  "type": "string",
+                  "pattern": "^(?!0000000000)[0-9]{10}$"
+                },
+                "complete": {
+                  "const": true
+                },
+                "percentagesAvailable": {
+                  "type": "boolean"
+                },
+                "publicScopeLimited": {
+                  "type": "boolean"
+                },
+                "sharedCount": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 20000
+                },
+                "unionCount": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 40000
+                },
+                "jaccardPct": {
+                  "type": [
+                    "number",
+                    "null"
+                  ],
+                  "minimum": 0,
+                  "maximum": 100
+                },
+                "overlapPct": {
+                  "type": [
+                    "number",
+                    "null"
+                  ],
+                  "minimum": 0,
+                  "maximum": 100
+                },
+                "leftCommonValueUsd": {
+                  "type": [
+                    "number",
+                    "null"
+                  ],
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "rightCommonValueUsd": {
+                  "type": [
+                    "number",
+                    "null"
+                  ],
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "leftCommonSharePct": {
+                  "type": [
+                    "number",
+                    "null"
+                  ],
+                  "minimum": 0,
+                  "maximum": 100
+                },
+                "rightCommonSharePct": {
+                  "type": [
+                    "number",
+                    "null"
+                  ],
+                  "minimum": 0,
+                  "maximum": 100
+                }
+              }
+            }
+          },
+          "coverage": {
+            "type": "object",
+            "required": [
+              "requestedManagers",
+              "completeManagers",
+              "allComplete",
+              "publicScopeLimitedManagers"
+            ],
+            "properties": {
+              "requestedManagers": {
+                "type": "integer",
+                "minimum": 2,
+                "maximum": 4
+              },
+              "completeManagers": {
+                "type": "integer",
+                "minimum": 2,
+                "maximum": 4
+              },
+              "allComplete": {
+                "const": true
+              },
+              "publicScopeLimitedManagers": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 4
+              }
+            }
+          },
+          "population": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "unionPositions",
+              "totalSharedPositions",
+              "matchingPositions"
+            ],
+            "properties": {
+              "unionPositions": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 80000
+              },
+              "totalSharedPositions": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 40000
+              },
+              "matchingPositions": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 40000
+              }
+            }
+          },
+          "rows": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 100,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "key",
+                "cusip",
+                "putCall",
+                "quantityType",
+                "managerCount",
+                "aggregateReportedValueUsd",
+                "cells"
+              ],
+              "properties": {
+                "key": {
+                  "type": "string",
+                  "pattern": "^[A-Z0-9*@#]{9}\\|(SECURITY|PUT|CALL)\\|(SH|PRN)$"
+                },
+                "cusip": {
+                  "type": "string",
+                  "pattern": "^[A-Z0-9*@#]{9}$"
+                },
+                "putCall": {
+                  "enum": [
+                    null,
+                    "PUT",
+                    "CALL"
+                  ]
+                },
+                "quantityType": {
+                  "enum": [
+                    "SH",
+                    "PRN"
+                  ]
+                },
+                "managerCount": {
+                  "type": "integer",
+                  "minimum": 2,
+                  "maximum": 4
+                },
+                "aggregateReportedValueUsd": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "cells": {
+                  "type": "array",
+                  "minItems": 2,
+                  "maxItems": 4,
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "cik",
+                      "status",
+                      "issuer",
+                      "classTitle",
+                      "quantity",
+                      "valueUsd",
+                      "weightPct"
+                    ],
+                    "properties": {
+                      "cik": {
+                        "type": "string",
+                        "pattern": "^(?!0000000000)[0-9]{10}$"
+                      },
+                      "status": {
+                        "enum": [
+                          "reported",
+                          "not-reported",
+                          "unknown"
+                        ]
+                      },
+                      "issuer": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "classTitle": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "quantity": {
+                        "type": [
+                          "number",
+                          "null"
+                        ],
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "valueUsd": {
+                        "type": [
+                          "number",
+                          "null"
+                        ],
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "weightPct": {
+                        "type": [
+                          "number",
+                          "null"
+                        ],
+                        "minimum": 0,
+                        "maximum": 100
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "pagination": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "limit",
+              "offset",
+              "total",
+              "nextOffset",
+              "truncated",
+              "snapshot"
+            ],
+            "properties": {
+              "limit": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 100
+              },
+              "offset": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9999
+              },
+              "total": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 40000
+              },
+              "nextOffset": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "minimum": 1,
+                "maximum": 9999
+              },
+              "truncated": {
+                "type": "boolean"
+              },
+              "snapshot": {
+                "type": "string",
+                "pattern": "^[a-f0-9]{64}$"
+              }
+            }
+          },
+          "limitations": {
+            "type": "array",
+            "items": {
+              "type": "string"
             }
           }
         }

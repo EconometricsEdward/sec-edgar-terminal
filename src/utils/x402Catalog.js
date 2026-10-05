@@ -14,6 +14,36 @@ const PAGE_PARAMETERS = [
 /** This public catalog describes paid delivery, not payment authorization. */
 export const X402_RESOURCES = [
   {
+    id: 'financial-changes', name: 'Financial change evidence', path: '/api/x402/v1/financial-changes', method: 'GET',
+    description: 'Compare latest financial observations with a compatible prior period, preserving units, calculation inputs and SEC evidence in a compact packet.',
+    useCase: 'Answer what changed across a watchlist without parsing full financial histories.',
+    includes: ['Latest and comparable baseline observations for selected metrics', 'Absolute changes, eligible growth rates and percentage-point margin changes', 'Compact SEC source and calculation references; explicit reasons for withheld comparisons'],
+    formats: ['json', 'csv'], limits: '1–10 distinct issuers; 1–12 metric keys; up to 4 MiB.',
+    parameters: [{ name: 'tickers', in: 'query', values: ['1–10 unique company tickers'], default: 'required' }, { name: 'basis', in: 'query', values: ['annual', 'quarter', 'ytd', 'ttm'], default: 'annual' }, { name: 'comparison', in: 'query', values: ['year', 'previous (annual or quarter only)'], default: 'year' }, { name: 'metrics', in: 'query', values: ['Up to 12 supported metric keys; see OpenAPI'], default: '11 core metrics' }, { name: 'format', in: 'query', values: ['json', 'csv'], default: 'json' }],
+    example: '/api/x402/v1/financial-changes?tickers=AAPL%2CMSFT&basis=annual&comparison=year',
+    limitations: 'Latest-filed values, including revisions; this is not a filing-text diff or an as-filed archive. Incompatible comparisons are withheld. Percentage growth is withheld for zero or negative bases. All selected issuers need at least one compatible pair.',
+  },
+  {
+    id: 'disclosure-evidence', name: 'Disclosure evidence search', path: '/api/x402/v1/disclosure-evidence', method: 'GET',
+    description: 'Find exact Boolean-matched original paragraphs in the prepared filing corpus, with source links, filing context and extraction coverage.',
+    useCase: 'Ground agent answers in disclosure passages with enough context to inspect qualifications and negations.',
+    includes: ['Full retained matching paragraphs, never cropped around a keyword', 'Issuer, accession, section, passage identity and SEC document link', 'Prepared corpus coverage and raw-candidate pagination with exact query verification'],
+    formats: ['json', 'csv'], limits: 'Up to 20 evidence paragraphs per request; up to 120 candidates checked.',
+    parameters: [{ name: 'query', in: 'query', values: ['Literal terms, phrases, AND, OR, NOT and parentheses; up to 16 terms'], default: 'required' }, { name: 'ciks', in: 'query', values: ['Optional 1–10 zero-padded issuer CIKs'], default: 'all prepared issuers' }, { name: 'forms / section', in: 'query', values: ['Supported SEC forms / all, risk, mda, notes, other or 8k item'], default: 'documented defaults' }, { name: 'start / end', in: 'query', values: ['Inclusive filing dates within two-year retention'], default: 'retention window / today' }, { name: 'limit / offset', in: 'query', values: ['1–20 paragraphs / 0–9999 raw candidate offset'], default: '10 / 0' }, { name: 'format', in: 'query', values: ['json', 'csv'], default: 'json' }],
+    example: '/api/x402/v1/disclosure-evidence?query=liquidity&limit=10',
+    limitations: 'A limited prepared corpus with partial document extraction, not all EDGAR or an exhaustive list of mentions. Matches verify the query within each retained paragraph, not document-wide absence. Candidate pagination can change as the corpus updates. No matches are not settled.',
+  },
+  {
+    id: 'institutional-overlap', name: 'Institutional holdings overlap', path: '/api/x402/v1/institutional-overlap', method: 'GET',
+    description: 'Reconcile shared reported positions across two to four same-quarter complete prepared 13F manager portfolios.',
+    useCase: 'Find common institutional positions while preserving security classes, options and each manager’s reported exposure.',
+    includes: ['Shared positions with per-manager shares, USD value and portfolio weights', 'Security identity, matching method and amendment-chain sources', 'Complete-input checks, reporting quarter, source-check dates and snapshot-pinned export pages'],
+    formats: ['json', 'csv'], limits: '2–4 managers; up to 100 positions per page; up to 4 MiB.',
+    parameters: [{ name: 'ciks', in: 'query', values: ['2–4 unique zero-padded manager CIKs'], default: 'required' }, { name: 'period', in: 'query', values: ['Optional retained quarter end'], default: 'aligned latest prepared quarters' }, { name: 'minimumManagers', in: 'query', values: ['2–4, no more than selected managers'], default: '2' }, { name: 'sort / order', in: 'query', values: ['reportedValue or cusip / asc or desc'], default: 'reportedValue / desc' }, ...PAGE_PARAMETERS, { name: 'format', in: 'query', values: ['json', 'csv'], default: 'json' }],
+    example: '/api/x402/v1/institutional-overlap?ciks=0001067983%2C0001350694&period=2026-06-30&limit=100&offset=0',
+    limitations: 'Historical disclosed 13F positions, not current holdings, trades, flows, performance or a complete manager balance sheet. All managers must have complete, uninvalidated prepared evidence for the same quarter; missing prior quarters are unavailable. Stale source checks remain visible.',
+  },
+  {
     id: 'financial-batch',
     name: 'Financial research bundles',
     path: '/api/x402/v1/financial-batch', method: 'GET',
