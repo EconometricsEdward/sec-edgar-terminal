@@ -3,7 +3,7 @@ import { ArrowRight, ArrowUpRight, Braces, Database, FileDown, Layers3, ListFilt
 import { buildPageMetadata } from '../../utils/siteMetadata';
 import { getX402PublicConfiguration } from '../../utils/x402Payments.js';
 import { getX402LivePublicConfiguration } from '../../utils/x402SolanaRecipient.js';
-import { X402_RESOURCES } from '../../utils/x402Catalog.js';
+import { X402_RESOURCES, getX402StarterSelection } from '../../utils/x402Catalog.js';
 import { buildX402BuyerExample } from '../../utils/x402BuyerExample.js';
 import styles from './data-access.module.css';
 
@@ -131,6 +131,7 @@ export default async function DataAccessPage() {
         <div className={styles.sectionHeader}><p className={styles.eyebrow}>The product catalog</p><h2 id='products-title'>Choose the work you want to save.</h2><p>Use an evidence packet for a specific research question, a batch or screen for a data workflow, or retrieve prepared models for your own pipeline. Check coverage free before purchasing an evidence product.</p></div>
         <div className={styles.resources}>
           {resources.map(resource => {
+            const starterSelection = getX402StarterSelection(resource);
             const fallback = PRODUCT_DETAILS[resource.id];
             const Icon = PRODUCT_ICONS[resource.id as keyof typeof PRODUCT_ICONS] || Database;
             const formats = resource.formats || fallback?.formats || ['json'];
@@ -140,7 +141,7 @@ export default async function DataAccessPage() {
               <p className={styles.useCase}>{resource.useCase || fallback?.useCase || resource.description}</p>
               <ul className={styles.includes}>{(resource.includes || fallback?.includes || [resource.description]).map(item => <li key={item}>{item}</li>)}</ul>
               <p className={styles.bounds}>{resource.limits || fallback?.limits || resource.limitations}</p>
-              <details className={styles.contract}><summary>Request details & limitations</summary><code>GET {resource.path}</code><p>{resource.parameters.map(parameter => `${parameter.name}: ${parameter.values.join(' | ')} (default ${parameter.default})`).join('; ')}</p><p>{resource.limitations}</p></details>
+              <details className={styles.contract}><summary>Request details & limitations</summary><code>GET {resource.path}</code>{starterSelection ? <p>With no query parameters, this buys the starter selection: <code>{JSON.stringify(starterSelection)}</code>. To choose another selection, include all required fields. A partial or invalid query is rejected.</p> : null}<p>{resource.parameters.map(parameter => `${parameter.name}: ${parameter.values.join(' | ')} (default ${parameter.default === 'required' && starterSelection ? 'required when any query is supplied' : parameter.default})`).join('; ')}</p><p>{resource.limitations}</p></details>
               <a className={styles.inspect} href={resource.example}>Inspect the payment offer <ArrowUpRight size={15} aria-hidden='true' /></a>
               {['disclosure-topic-packet', 'bank-risk-batch', 'financial-changes', 'disclosure-evidence', 'institutional-overlap'].includes(resource.id) ? <a className={styles.inspect} href={`/api/x402/availability?product=${resource.id}&${resource.example.split('?')[1]}`}>Check prepared coverage free <ArrowUpRight size={15} aria-hidden='true' /></a> : null}
             </article>;

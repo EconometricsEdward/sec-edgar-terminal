@@ -1,5 +1,5 @@
 import { bazaarResourceServerExtension } from '@x402/extensions/bazaar';
-import { x402DiscoveryOptions, X402_SERVICE_METADATA } from './x402Discovery.js';
+import { x402DiscoveryOptions, X402_SERVICE_METADATA, X402_DISCOVERY_DESCRIPTORS } from './x402Discovery.js';
 
 export const X402_DOCUMENTATION_URL = 'https://secedgarterminal.com/data-access';
 export const X402_DISCOVERY_VERSION = 'edgar.x402-catalog.v1';
@@ -129,6 +129,12 @@ export const X402_RESOURCES = [
   },
 ];
 
+/** Public scope purchased when a selector product receives an empty query. */
+export function getX402StarterSelection(resource) {
+  if (!X402_DISCOVERY_DESCRIPTORS[resource.id]?.inputSchema.required?.length) return null;
+  return Object.fromEntries(new URL(resource.example, 'https://secedgarterminal.com').searchParams);
+}
+
 export function buildX402Catalog(configuration) {
   const token = configuration.network === SOLANA_MAINNET ? { asset: SOLANA_USDC, amount: '10000', decimals: 6 } : {};
   return {
@@ -160,7 +166,8 @@ export function buildX402Catalog(configuration) {
         const { routeTemplate: _routeTemplate, ...concrete } = declaration;
         declaration = concrete;
       }
-      return { ...resource, price: configuration.price, currency: configuration.currency, network: configuration.network, ...token,
+      const starterSelection = getX402StarterSelection(resource);
+      return { ...resource, ...(starterSelection ? { starterSelection, selectionPolicy: 'An empty query buys this documented starter selection. Any nonempty query must supply the original required selectors; invalid selections never fall back to the starter.' } : {}), price: configuration.price, currency: configuration.currency, network: configuration.network, ...token,
         discovery: { indexing: 'concrete-path', ...metadata, extensions: { ...extensions, bazaar: declaration } },
       };
     }),

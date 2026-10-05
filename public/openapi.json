@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "EDGAR Terminal Research and x402 Data APIs",
-    "version": "2.5.1",
+    "version": "2.5.2",
     "description": "Free public research APIs and eleven paid machine products, including company disclosure topic packets and same-quarter legal-bank capital, credit and funding batches. Paid GETs cost 0.01 USDC on Solana. Evidence, bank, batch and screen products support JSON/CSV. Public research remains free. Five products provide free prepared-coverage checks through /api/x402/availability. Optional exact-response recovery lasts 24 hours after staging."
   },
   "servers": [
@@ -828,8 +828,8 @@
       },
       "head": {
         "summary": "Inspect unpaid GET discovery metadata",
-        "description": "A bodyless, nonsettling discovery challenge for this GET product. Bare paths advertise required GET selectors for catalog admission; query-bearing probes preserve the documented GET selector validation and JSON/CSV format. HEAD does not read prepared data, verify buyer proofs, settle payments or recover deliveries. Payment, authorization and recovery credentials are rejected. A challenge confirms payment configuration, not prepared-data availability.",
-        "operationId": "undefinedDiscoveryHead",
+        "description": "A bodyless, nonsettling discovery challenge for this GET product. Bare paths advertise the GET product with its documented defaults; query-bearing probes preserve the documented GET selector validation and JSON/CSV format. HEAD does not read prepared data, verify buyer proofs, settle payments or recover deliveries. Payment, authorization and recovery credentials are rejected. A challenge confirms payment configuration, not prepared-data availability.",
+        "operationId": "inspectPaidFinancialsDiscovery",
         "responses": {
           "400": {
             "description": "Credentials or invalid query-bearing selectors were rejected; no payment offer."
@@ -978,8 +978,8 @@
       },
       "head": {
         "summary": "Inspect unpaid GET discovery metadata",
-        "description": "A bodyless, nonsettling discovery challenge for this GET product. Bare paths advertise required GET selectors for catalog admission; query-bearing probes preserve the documented GET selector validation and JSON/CSV format. HEAD does not read prepared data, verify buyer proofs, settle payments or recover deliveries. Payment, authorization and recovery credentials are rejected. A challenge confirms payment configuration, not prepared-data availability.",
-        "operationId": "undefinedDiscoveryHead",
+        "description": "A bodyless, nonsettling discovery challenge for this GET product. Bare paths advertise the GET product with its documented defaults; query-bearing probes preserve the documented GET selector validation and JSON/CSV format. HEAD does not read prepared data, verify buyer proofs, settle payments or recover deliveries. Payment, authorization and recovery credentials are rejected. A challenge confirms payment configuration, not prepared-data availability.",
+        "operationId": "inspectPaidRefinancingDiscovery",
         "responses": {
           "400": {
             "description": "Credentials or invalid query-bearing selectors were rejected; no payment offer."
@@ -1140,8 +1140,8 @@
       },
       "head": {
         "summary": "Inspect unpaid GET discovery metadata",
-        "description": "A bodyless, nonsettling discovery challenge for this GET product. Bare paths advertise required GET selectors for catalog admission; query-bearing probes preserve the documented GET selector validation and JSON/CSV format. HEAD does not read prepared data, verify buyer proofs, settle payments or recover deliveries. Payment, authorization and recovery credentials are rejected. A challenge confirms payment configuration, not prepared-data availability.",
-        "operationId": "undefinedDiscoveryHead",
+        "description": "A bodyless, nonsettling discovery challenge for this GET product. Bare paths advertise the GET product with its documented defaults; query-bearing probes preserve the documented GET selector validation and JSON/CSV format. HEAD does not read prepared data, verify buyer proofs, settle payments or recover deliveries. Payment, authorization and recovery credentials are rejected. A challenge confirms payment configuration, not prepared-data availability.",
+        "operationId": "inspectPaidFactorUniverseDiscovery",
         "responses": {
           "400": {
             "description": "Credentials or invalid query-bearing selectors were rejected; no payment offer."
@@ -1172,7 +1172,7 @@
           "Paid x402 data"
         ],
         "summary": "Batch normalized financial histories for one to ten companies",
-        "description": "Bounded cache-only prepared research. A successfully settled response costs 0.01 USDC. Invalid selectors, unavailable or corrupt data, no matching results, conflicts and oversized responses are not settled. Unknown, duplicate and empty query fields are rejected. format=csv returns source-linked CSV; preserve source dates, units, missing values and coverage. Financial data uses latest-filed values rather than an as-filed archive. Disclosure search covers a partial retained paragraph corpus and candidate pagination can change as it updates; hasMore does not guarantee further exact matches. Institutional overlap requires complete aligned manager quarters and preserves classes, options and amendment evidence. Evidence-product coverage can be checked free via /api/x402/availability with product=id and the same query selectors. Responses are bounded to 4 MiB.",
+        "description": "Bounded cache-only prepared research. A successfully settled response costs 0.01 USDC. Invalid selectors, unavailable or corrupt data, no matching results, conflicts and oversized responses are not settled. Unknown, duplicate and empty query fields are rejected. format=csv returns source-linked CSV; preserve source dates, units, missing values and coverage. Financial data uses latest-filed values rather than an as-filed archive. Disclosure search covers a partial retained paragraph corpus and candidate pagination can change as it updates; hasMore does not guarantee further exact matches. Institutional overlap requires complete aligned manager quarters and preserves classes, options and amendment evidence. Evidence-product coverage can be checked free via /api/x402/availability with product=id and the same query selectors. Responses are bounded to 4 MiB. With no query parameters, this purchases the documented starter selection {\"tickers\":\"AAPL,MSFT\",\"basis\":\"annual\"}. Once any query field is supplied, all originally required selectors must be present; partial or invalid queries never fall back to a starter selection. Starter quarters are explicit historical quarters, not an automatic latest-quarter selection.",
         "security": [
           {
             "X402Payment": []
@@ -1207,18 +1207,60 @@
             "csv"
           ],
           "catalog": "https://secedgarterminal.com/api/x402",
-          "description": "Offers publish query/path contracts and schema-only output declarations. Directory admission and buyer demand remain facilitator-dependent."
+          "description": "Offers publish query/path contracts and schema-only output declarations. Directory admission and buyer demand remain facilitator-dependent.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "tickers": {
+                "type": "string",
+                "pattern": "^[A-Za-z][A-Za-z0-9.-]{0,14}(,[A-Za-z][A-Za-z0-9.-]{0,14}){0,9}$",
+                "description": "One to ten unique company tickers, comma separated."
+              },
+              "basis": {
+                "type": "string",
+                "enum": [
+                  "annual",
+                  "quarter",
+                  "ytd",
+                  "ttm"
+                ],
+                "default": "annual",
+                "description": "Financial reporting basis; availability varies by company."
+              },
+              "format": {
+                "type": "string",
+                "enum": [
+                  "json",
+                  "csv"
+                ],
+                "default": "json",
+                "description": "JSON result or flat CSV with source and pagination context."
+              }
+            },
+            "additionalProperties": false,
+            "anyOf": [
+              {
+                "maxProperties": 0
+              },
+              {
+                "required": [
+                  "tickers"
+                ]
+              }
+            ]
+          }
         },
         "parameters": [
           {
             "name": "tickers",
             "in": "query",
-            "required": true,
+            "required": false,
             "schema": {
               "type": "string",
               "pattern": "^[A-Za-z][A-Za-z0-9.-]{0,14}(,[A-Za-z][A-Za-z0-9.-]{0,14}){0,9}$",
               "description": "One to ten unique company tickers, comma separated."
-            }
+            },
+            "description": "Required when any query parameter is supplied."
           },
           {
             "name": "basis",
@@ -1314,12 +1356,16 @@
             "$ref": "#/components/responses/X402Unavailable"
           }
         },
-        "operationId": "readPaidFinancialBatch"
+        "operationId": "readPaidFinancialBatch",
+        "x-starter-selection": {
+          "tickers": "AAPL,MSFT",
+          "basis": "annual"
+        }
       },
       "head": {
         "summary": "Inspect unpaid GET discovery metadata",
-        "description": "A bodyless, nonsettling discovery challenge for this GET product. Bare paths advertise required GET selectors for catalog admission; query-bearing probes preserve the documented GET selector validation and JSON/CSV format. HEAD does not read prepared data, verify buyer proofs, settle payments or recover deliveries. Payment, authorization and recovery credentials are rejected. A challenge confirms payment configuration, not prepared-data availability.",
-        "operationId": "readPaidFinancialBatchDiscoveryHead",
+        "description": "A bodyless, nonsettling discovery challenge for this GET product. Bare paths advertise the GET starter selection {\"tickers\":\"AAPL,MSFT\",\"basis\":\"annual\"}; query-bearing probes preserve the documented GET selector validation and JSON/CSV format. HEAD does not read prepared data, verify buyer proofs, settle payments or recover deliveries. Payment, authorization and recovery credentials are rejected. A challenge confirms payment configuration, not prepared-data availability.",
+        "operationId": "inspectPaidFinancialBatchDiscovery",
         "responses": {
           "400": {
             "description": "Credentials or invalid query-bearing selectors were rejected; no payment offer."
@@ -1618,8 +1664,8 @@
       },
       "head": {
         "summary": "Inspect unpaid GET discovery metadata",
-        "description": "A bodyless, nonsettling discovery challenge for this GET product. Bare paths advertise required GET selectors for catalog admission; query-bearing probes preserve the documented GET selector validation and JSON/CSV format. HEAD does not read prepared data, verify buyer proofs, settle payments or recover deliveries. Payment, authorization and recovery credentials are rejected. A challenge confirms payment configuration, not prepared-data availability.",
-        "operationId": "readPaidFundamentalScreenDiscoveryHead",
+        "description": "A bodyless, nonsettling discovery challenge for this GET product. Bare paths advertise the GET product with its documented defaults; query-bearing probes preserve the documented GET selector validation and JSON/CSV format. HEAD does not read prepared data, verify buyer proofs, settle payments or recover deliveries. Payment, authorization and recovery credentials are rejected. A challenge confirms payment configuration, not prepared-data availability.",
+        "operationId": "inspectPaidFundamentalScreenDiscovery",
         "responses": {
           "400": {
             "description": "Credentials or invalid query-bearing selectors were rejected; no payment offer."
@@ -1887,8 +1933,8 @@
       },
       "head": {
         "summary": "Inspect unpaid GET discovery metadata",
-        "description": "A bodyless, nonsettling discovery challenge for this GET product. Bare paths advertise required GET selectors for catalog admission; query-bearing probes preserve the documented GET selector validation and JSON/CSV format. HEAD does not read prepared data, verify buyer proofs, settle payments or recover deliveries. Payment, authorization and recovery credentials are rejected. A challenge confirms payment configuration, not prepared-data availability.",
-        "operationId": "readPaidCreditScreenDiscoveryHead",
+        "description": "A bodyless, nonsettling discovery challenge for this GET product. Bare paths advertise the GET product with its documented defaults; query-bearing probes preserve the documented GET selector validation and JSON/CSV format. HEAD does not read prepared data, verify buyer proofs, settle payments or recover deliveries. Payment, authorization and recovery credentials are rejected. A challenge confirms payment configuration, not prepared-data availability.",
+        "operationId": "inspectPaidCreditScreenDiscovery",
         "responses": {
           "400": {
             "description": "Credentials or invalid query-bearing selectors were rejected; no payment offer."
@@ -1978,7 +2024,7 @@
           "Paid x402 data"
         ],
         "summary": "Compatible latest-versus-baseline financial changes with compact SEC evidence",
-        "description": "Bounded cache-only prepared research. A successfully settled response costs 0.01 USDC. Invalid selectors, unavailable or corrupt data, no matching results, conflicts and oversized responses are not settled. Unknown, duplicate and empty query fields are rejected. format=csv returns source-linked CSV; preserve source dates, units, missing values and coverage. Financial data uses latest-filed values rather than an as-filed archive. Disclosure search covers a partial retained paragraph corpus and candidate pagination can change as it updates; hasMore does not guarantee further exact matches. Institutional overlap requires complete aligned manager quarters and preserves classes, options and amendment evidence. Evidence-product coverage can be checked free via /api/x402/availability with product=id and the same query selectors. Responses are bounded to 4 MiB.",
+        "description": "Bounded cache-only prepared research. A successfully settled response costs 0.01 USDC. Invalid selectors, unavailable or corrupt data, no matching results, conflicts and oversized responses are not settled. Unknown, duplicate and empty query fields are rejected. format=csv returns source-linked CSV; preserve source dates, units, missing values and coverage. Financial data uses latest-filed values rather than an as-filed archive. Disclosure search covers a partial retained paragraph corpus and candidate pagination can change as it updates; hasMore does not guarantee further exact matches. Institutional overlap requires complete aligned manager quarters and preserves classes, options and amendment evidence. Evidence-product coverage can be checked free via /api/x402/availability with product=id and the same query selectors. Responses are bounded to 4 MiB. With no query parameters, this purchases the documented starter selection {\"tickers\":\"AAPL,MSFT\",\"basis\":\"annual\",\"comparison\":\"year\"}. Once any query field is supplied, all originally required selectors must be present; partial or invalid queries never fall back to a starter selection. Starter quarters are explicit historical quarters, not an automatic latest-quarter selection.",
         "security": [
           {
             "X402Payment": []
@@ -2013,18 +2059,72 @@
             "csv"
           ],
           "catalog": "https://secedgarterminal.com/api/x402",
-          "description": "Offers publish query/path contracts and schema-only output declarations. Directory admission and buyer demand remain facilitator-dependent."
+          "description": "Offers publish query/path contracts and schema-only output declarations. Directory admission and buyer demand remain facilitator-dependent.",
+          "inputSchema": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "tickers": {
+                "type": "string",
+                "pattern": "^[A-Za-z][A-Za-z0-9.-]{0,14}(,[A-Za-z][A-Za-z0-9.-]{0,14}){0,9}$",
+                "description": "One to ten unique tickers. Multiple securities of the same issuer are rejected."
+              },
+              "basis": {
+                "type": "string",
+                "enum": [
+                  "annual",
+                  "quarter",
+                  "ytd",
+                  "ttm"
+                ],
+                "default": "annual"
+              },
+              "comparison": {
+                "type": "string",
+                "enum": [
+                  "year",
+                  "previous"
+                ],
+                "default": "year",
+                "description": "Same season a year earlier, or previous standalone quarter/annual period. previous is unavailable for YTD and TTM."
+              },
+              "metrics": {
+                "type": "string",
+                "pattern": "^(revenue|operatingIncome|netIncome|operatingCashFlow|freeCashFlow|cash|totalAssets|totalLiabilities|equity|operatingMargin|netMargin|totalDebt)(,(revenue|operatingIncome|netIncome|operatingCashFlow|freeCashFlow|cash|totalAssets|totalLiabilities|equity|operatingMargin|netMargin|totalDebt)){0,11}$",
+                "description": "One to twelve unique supported keys. Omit for eleven core metrics."
+              },
+              "format": {
+                "type": "string",
+                "enum": [
+                  "json",
+                  "csv"
+                ],
+                "default": "json"
+              }
+            },
+            "anyOf": [
+              {
+                "maxProperties": 0
+              },
+              {
+                "required": [
+                  "tickers"
+                ]
+              }
+            ]
+          }
         },
         "parameters": [
           {
             "name": "tickers",
             "in": "query",
-            "required": true,
+            "required": false,
             "schema": {
               "type": "string",
               "pattern": "^[A-Za-z][A-Za-z0-9.-]{0,14}(,[A-Za-z][A-Za-z0-9.-]{0,14}){0,9}$",
               "description": "One to ten unique tickers. Multiple securities of the same issuer are rejected."
-            }
+            },
+            "description": "Required when any query parameter is supplied."
           },
           {
             "name": "basis",
@@ -2142,12 +2242,17 @@
             "$ref": "#/components/responses/X402Unavailable"
           }
         },
-        "operationId": "readPaidFinancialChanges"
+        "operationId": "readPaidFinancialChanges",
+        "x-starter-selection": {
+          "tickers": "AAPL,MSFT",
+          "basis": "annual",
+          "comparison": "year"
+        }
       },
       "head": {
         "summary": "Inspect unpaid GET discovery metadata",
-        "description": "A bodyless, nonsettling discovery challenge for this GET product. Bare paths advertise required GET selectors for catalog admission; query-bearing probes preserve the documented GET selector validation and JSON/CSV format. HEAD does not read prepared data, verify buyer proofs, settle payments or recover deliveries. Payment, authorization and recovery credentials are rejected. A challenge confirms payment configuration, not prepared-data availability.",
-        "operationId": "readPaidFinancialChangesDiscoveryHead",
+        "description": "A bodyless, nonsettling discovery challenge for this GET product. Bare paths advertise the GET starter selection {\"tickers\":\"AAPL,MSFT\",\"basis\":\"annual\",\"comparison\":\"year\"}; query-bearing probes preserve the documented GET selector validation and JSON/CSV format. HEAD does not read prepared data, verify buyer proofs, settle payments or recover deliveries. Payment, authorization and recovery credentials are rejected. A challenge confirms payment configuration, not prepared-data availability.",
+        "operationId": "inspectPaidFinancialChangesDiscovery",
         "responses": {
           "400": {
             "description": "Credentials or invalid query-bearing selectors were rejected; no payment offer."
@@ -2178,7 +2283,7 @@
           "Paid x402 data"
         ],
         "summary": "Exact Boolean-matched original prepared disclosure paragraphs",
-        "description": "Bounded cache-only prepared research. A successfully settled response costs 0.01 USDC. Invalid selectors, unavailable or corrupt data, no matching results, conflicts and oversized responses are not settled. Unknown, duplicate and empty query fields are rejected. format=csv returns source-linked CSV; preserve source dates, units, missing values and coverage. Financial data uses latest-filed values rather than an as-filed archive. Disclosure search covers a partial retained paragraph corpus and candidate pagination can change as it updates; hasMore does not guarantee further exact matches. Institutional overlap requires complete aligned manager quarters and preserves classes, options and amendment evidence. Evidence-product coverage can be checked free via /api/x402/availability with product=id and the same query selectors. Responses are bounded to 4 MiB.",
+        "description": "Bounded cache-only prepared research. A successfully settled response costs 0.01 USDC. Invalid selectors, unavailable or corrupt data, no matching results, conflicts and oversized responses are not settled. Unknown, duplicate and empty query fields are rejected. format=csv returns source-linked CSV; preserve source dates, units, missing values and coverage. Financial data uses latest-filed values rather than an as-filed archive. Disclosure search covers a partial retained paragraph corpus and candidate pagination can change as it updates; hasMore does not guarantee further exact matches. Institutional overlap requires complete aligned manager quarters and preserves classes, options and amendment evidence. Evidence-product coverage can be checked free via /api/x402/availability with product=id and the same query selectors. Responses are bounded to 4 MiB. With no query parameters, this purchases the documented starter selection {\"query\":\"liquidity\",\"limit\":\"10\"}. Once any query field is supplied, all originally required selectors must be present; partial or invalid queries never fall back to a starter selection. Starter quarters are explicit historical quarters, not an automatic latest-quarter selection.",
         "security": [
           {
             "X402Payment": []
@@ -2213,19 +2318,86 @@
             "csv"
           ],
           "catalog": "https://secedgarterminal.com/api/x402",
-          "description": "Offers publish query/path contracts and schema-only output declarations. Directory admission and buyer demand remain facilitator-dependent."
+          "description": "Offers publish query/path contracts and schema-only output declarations. Directory admission and buyer demand remain facilitator-dependent.",
+          "inputSchema": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "query": {
+                "type": "string",
+                "minLength": 2,
+                "maxLength": 1000,
+                "description": "Literal words, quoted phrases, AND, OR, NOT and parentheses; at most sixteen terms with at least one positive term. Exact matching within each retained original paragraph."
+              },
+              "ciks": {
+                "type": "string",
+                "pattern": "^(?!0000000000)[0-9]{10}(,(?!0000000000)[0-9]{10}){0,9}$",
+                "description": "Unique nonzero zero-padded SEC issuer identifiers."
+              },
+              "forms": {
+                "type": "string",
+                "description": "Comma-separated supported SEC forms, including optional /A forms. Omit to search all supported prepared forms; see the output schema for the whitelist."
+              },
+              "section": {
+                "type": "string",
+                "pattern": "^(all|risk|mda|notes|other|8k:[0-9]\\.[0-9]{2})$",
+                "default": "all"
+              },
+              "start": {
+                "type": "string",
+                "format": "date",
+                "description": "Inclusive filing date, within the prepared two-year retention window."
+              },
+              "end": {
+                "type": "string",
+                "format": "date",
+                "description": "Inclusive filing date, no later than today."
+              },
+              "limit": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 20,
+                "default": 10
+              },
+              "offset": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9999,
+                "default": 0
+              },
+              "format": {
+                "type": "string",
+                "enum": [
+                  "json",
+                  "csv"
+                ],
+                "default": "json"
+              }
+            },
+            "anyOf": [
+              {
+                "maxProperties": 0
+              },
+              {
+                "required": [
+                  "query"
+                ]
+              }
+            ]
+          }
         },
         "parameters": [
           {
             "name": "query",
             "in": "query",
-            "required": true,
+            "required": false,
             "schema": {
               "type": "string",
               "minLength": 2,
               "maxLength": 1000,
               "description": "Literal words, quoted phrases, AND, OR, NOT and parentheses; at most sixteen terms with at least one positive term. Exact matching within each retained original paragraph."
-            }
+            },
+            "description": "Required when any query parameter is supplied."
           },
           {
             "name": "ciks",
@@ -2375,12 +2547,16 @@
             "$ref": "#/components/responses/X402Unavailable"
           }
         },
-        "operationId": "readPaidDisclosureEvidence"
+        "operationId": "readPaidDisclosureEvidence",
+        "x-starter-selection": {
+          "query": "liquidity",
+          "limit": "10"
+        }
       },
       "head": {
         "summary": "Inspect unpaid GET discovery metadata",
-        "description": "A bodyless, nonsettling discovery challenge for this GET product. Bare paths advertise required GET selectors for catalog admission; query-bearing probes preserve the documented GET selector validation and JSON/CSV format. HEAD does not read prepared data, verify buyer proofs, settle payments or recover deliveries. Payment, authorization and recovery credentials are rejected. A challenge confirms payment configuration, not prepared-data availability.",
-        "operationId": "readPaidDisclosureEvidenceDiscoveryHead",
+        "description": "A bodyless, nonsettling discovery challenge for this GET product. Bare paths advertise the GET starter selection {\"query\":\"liquidity\",\"limit\":\"10\"}; query-bearing probes preserve the documented GET selector validation and JSON/CSV format. HEAD does not read prepared data, verify buyer proofs, settle payments or recover deliveries. Payment, authorization and recovery credentials are rejected. A challenge confirms payment configuration, not prepared-data availability.",
+        "operationId": "inspectPaidDisclosureEvidenceDiscovery",
         "responses": {
           "400": {
             "description": "Credentials or invalid query-bearing selectors were rejected; no payment offer."
@@ -2411,7 +2587,7 @@
           "Paid x402 data"
         ],
         "summary": "Reconciled same-quarter shared positions across complete prepared 13F portfolios",
-        "description": "Bounded cache-only prepared research. A successfully settled response costs 0.01 USDC. Invalid selectors, unavailable or corrupt data, no matching results, conflicts and oversized responses are not settled. Unknown, duplicate and empty query fields are rejected. format=csv returns source-linked CSV; preserve source dates, units, missing values and coverage. Financial data uses latest-filed values rather than an as-filed archive. Disclosure search covers a partial retained paragraph corpus and candidate pagination can change as it updates; hasMore does not guarantee further exact matches. Institutional overlap requires complete aligned manager quarters and preserves classes, options and amendment evidence. Evidence-product coverage can be checked free via /api/x402/availability with product=id and the same query selectors. Responses are bounded to 4 MiB.",
+        "description": "Bounded cache-only prepared research. A successfully settled response costs 0.01 USDC. Invalid selectors, unavailable or corrupt data, no matching results, conflicts and oversized responses are not settled. Unknown, duplicate and empty query fields are rejected. format=csv returns source-linked CSV; preserve source dates, units, missing values and coverage. Financial data uses latest-filed values rather than an as-filed archive. Disclosure search covers a partial retained paragraph corpus and candidate pagination can change as it updates; hasMore does not guarantee further exact matches. Institutional overlap requires complete aligned manager quarters and preserves classes, options and amendment evidence. Evidence-product coverage can be checked free via /api/x402/availability with product=id and the same query selectors. Responses are bounded to 4 MiB. With no query parameters, this purchases the documented starter selection {\"ciks\":\"0001067983,0001350694\",\"period\":\"2026-06-30\",\"limit\":\"100\",\"offset\":\"0\"}. Once any query field is supplied, all originally required selectors must be present; partial or invalid queries never fall back to a starter selection. Starter quarters are explicit historical quarters, not an automatic latest-quarter selection.",
         "security": [
           {
             "X402Payment": []
@@ -2446,18 +2622,92 @@
             "csv"
           ],
           "catalog": "https://secedgarterminal.com/api/x402",
-          "description": "Offers publish query/path contracts and schema-only output declarations. Directory admission and buyer demand remain facilitator-dependent."
+          "description": "Offers publish query/path contracts and schema-only output declarations. Directory admission and buyer demand remain facilitator-dependent.",
+          "inputSchema": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "ciks": {
+                "type": "string",
+                "pattern": "^(?!0000000000)[0-9]{10}(,(?!0000000000)[0-9]{10}){1,3}$",
+                "description": "Two to four unique manager CIKs with complete prepared portfolios."
+              },
+              "period": {
+                "type": "string",
+                "pattern": "^[0-9]{4}-(03-31|06-30|09-30|12-31)$",
+                "description": "Exact retained quarter, or omit to require aligned latest prepared quarters."
+              },
+              "minimumManagers": {
+                "type": "integer",
+                "minimum": 2,
+                "maximum": 4,
+                "default": 2
+              },
+              "sort": {
+                "type": "string",
+                "enum": [
+                  "reportedValue",
+                  "cusip"
+                ],
+                "default": "reportedValue"
+              },
+              "order": {
+                "type": "string",
+                "enum": [
+                  "asc",
+                  "desc"
+                ],
+                "default": "desc"
+              },
+              "limit": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 100,
+                "default": 100
+              },
+              "offset": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9999,
+                "default": 0
+              },
+              "snapshot": {
+                "type": "string",
+                "pattern": "^[a-f0-9]{64}$",
+                "description": "Reuse pagination.snapshot with identical manager selection, quarter and sorting."
+              },
+              "format": {
+                "type": "string",
+                "enum": [
+                  "json",
+                  "csv"
+                ],
+                "default": "json"
+              }
+            },
+            "anyOf": [
+              {
+                "maxProperties": 0
+              },
+              {
+                "required": [
+                  "ciks"
+                ]
+              }
+            ]
+          }
         },
         "parameters": [
           {
             "name": "ciks",
             "in": "query",
-            "required": true,
+            "required": false,
             "schema": {
               "type": "string",
               "pattern": "^(?!0000000000)[0-9]{10}(,(?!0000000000)[0-9]{10}){1,3}$",
               "description": "Two to four unique manager CIKs with complete prepared portfolios."
-            }
+            },
+            "description": "Required when any query parameter is supplied."
           },
           {
             "name": "period",
@@ -2615,12 +2865,18 @@
             "$ref": "#/components/responses/X402Unavailable"
           }
         },
-        "operationId": "readPaidInstitutionalOverlap"
+        "operationId": "readPaidInstitutionalOverlap",
+        "x-starter-selection": {
+          "ciks": "0001067983,0001350694",
+          "period": "2026-06-30",
+          "limit": "100",
+          "offset": "0"
+        }
       },
       "head": {
         "summary": "Inspect unpaid GET discovery metadata",
-        "description": "A bodyless, nonsettling discovery challenge for this GET product. Bare paths advertise required GET selectors for catalog admission; query-bearing probes preserve the documented GET selector validation and JSON/CSV format. HEAD does not read prepared data, verify buyer proofs, settle payments or recover deliveries. Payment, authorization and recovery credentials are rejected. A challenge confirms payment configuration, not prepared-data availability.",
-        "operationId": "readPaidInstitutionalOverlapDiscoveryHead",
+        "description": "A bodyless, nonsettling discovery challenge for this GET product. Bare paths advertise the GET starter selection {\"ciks\":\"0001067983,0001350694\",\"period\":\"2026-06-30\",\"limit\":\"100\",\"offset\":\"0\"}; query-bearing probes preserve the documented GET selector validation and JSON/CSV format. HEAD does not read prepared data, verify buyer proofs, settle payments or recover deliveries. Payment, authorization and recovery credentials are rejected. A challenge confirms payment configuration, not prepared-data availability.",
+        "operationId": "inspectPaidInstitutionalOverlapDiscovery",
         "responses": {
           "400": {
             "description": "Credentials or invalid query-bearing selectors were rejected; no payment offer."
@@ -2652,7 +2908,7 @@
           "Paid x402 data"
         ],
         "summary": "Check prepared evidence-product coverage free before authorizing payment",
-        "description": "Free bounded prepared-data checks for the five listed products. Use the selected product’s exact query contract; parameters belonging to another product are rejected. Returns only readiness, stale status, result count and an optional stable packet fingerprint, never paid quotes or metric rows. Successful summaries can be reused for up to thirty seconds per runtime, capped at ninety-six summaries; checkedAt remains the original reader check time. Concurrent identical selections share one reader. Actual reader starts are limited to four concurrent and thirty per minute per runtime. Coverage can change before purchase; readiness is not a reservation. Do not send payment or recovery headers. HEAD discovery challenges on paid routes do not check prepared coverage; use this free endpoint to check supported product selections.",
+        "description": "Free bounded prepared-data checks for the five listed products. Use the selected product’s exact query contract; parameters belonging to another product are rejected. Returns only readiness, stale status, result count and an optional stable packet fingerprint, never paid quotes or metric rows. Successful summaries can be reused for up to thirty seconds per runtime, capped at ninety-six summaries; checkedAt remains the original reader check time. Concurrent identical selections share one reader. Actual reader starts are limited to four concurrent and thirty per minute per runtime. Coverage can change before purchase; readiness is not a reservation. Do not send payment or recovery headers. HEAD discovery challenges on paid routes do not check prepared coverage; use this free endpoint to check supported product selections. Supply the exact product selectors, including required fields, even when checking a paid endpoint's starter selection. This free endpoint does not substitute starter defaults.",
         "parameters": [
           {
             "name": "product",
@@ -3099,7 +3355,7 @@
           "Paid x402 data"
         ],
         "summary": "Company disclosure topic packets",
-        "description": "Organize original prepared filing paragraphs across selected liquidity, covenant, collateral and customer-concentration topics into one issuer research packet. Prepared retained paragraphs only, with partial extraction. A topic without matching evidence is not proof of absence in a filing or of absence of risk. This packet does not classify risk, establish compliance, or identify changes between complete filings. If every topic has no match, no settlement occurs. One exact SEC issuer; 1–3 topics; up to 5 paragraphs and 120 candidates per topic. Unknown, duplicate and empty query parameters are rejected before a payment offer. Prepared reads never acquire new upstream data. Each successful bounded request costs 0.01 USDC.",
+        "description": "Organize original prepared filing paragraphs across selected liquidity, covenant, collateral and customer-concentration topics into one issuer research packet. Prepared retained paragraphs only, with partial extraction. A topic without matching evidence is not proof of absence in a filing or of absence of risk. This packet does not classify risk, establish compliance, or identify changes between complete filings. If every topic has no match, no settlement occurs. One exact SEC issuer; 1–3 topics; up to 5 paragraphs and 120 candidates per topic. Unknown, duplicate and empty query parameters are rejected before a payment offer. Prepared reads never acquire new upstream data. Each successful bounded request costs 0.01 USDC. With no query parameters, this purchases the documented starter selection {\"cik\":\"0000019617\",\"topics\":\"liquidity,covenants,collateral\"}. Once any query field is supplied, all originally required selectors must be present; partial or invalid queries never fall back to a starter selection. Starter quarters are explicit historical quarters, not an automatic latest-quarter selection.",
         "security": [
           {
             "X402Payment": []
@@ -3126,9 +3382,6 @@
           "inputSchema": {
             "type": "object",
             "additionalProperties": false,
-            "required": [
-              "cik"
-            ],
             "properties": {
               "cik": {
                 "type": "string",
@@ -3159,7 +3412,17 @@
                 ],
                 "default": "json"
               }
-            }
+            },
+            "anyOf": [
+              {
+                "maxProperties": 0
+              },
+              {
+                "required": [
+                  "cik"
+                ]
+              }
+            ]
           },
           "outputSchema": "#/components/schemas/PaidDisclosureTopicPacket",
           "extension": "bazaar",
@@ -3181,12 +3444,13 @@
           {
             "name": "cik",
             "in": "query",
-            "required": true,
+            "required": false,
             "schema": {
               "type": "string",
               "pattern": "^(?!0000000000)[0-9]{10}$",
               "description": "One exact nonzero ten-digit SEC issuer CIK. No ticker or alias resolution."
-            }
+            },
+            "description": "Required when any query parameter is supplied."
           },
           {
             "name": "topics",
@@ -3290,12 +3554,16 @@
             "$ref": "#/components/responses/X402Unavailable"
           }
         },
-        "operationId": "readPaidDisclosureTopicPacket"
+        "operationId": "readPaidDisclosureTopicPacket",
+        "x-starter-selection": {
+          "cik": "0000019617",
+          "topics": "liquidity,covenants,collateral"
+        }
       },
       "head": {
         "summary": "Inspect unpaid GET discovery metadata",
-        "description": "A bodyless, nonsettling discovery challenge for this GET product. Bare paths advertise required GET selectors for catalog admission; query-bearing probes preserve the documented GET selector validation and JSON/CSV format. HEAD does not read prepared data, verify buyer proofs, settle payments or recover deliveries. Payment, authorization and recovery credentials are rejected. A challenge confirms payment configuration, not prepared-data availability.",
-        "operationId": "readPaidDisclosureTopicPacketDiscoveryHead",
+        "description": "A bodyless, nonsettling discovery challenge for this GET product. Bare paths advertise the GET starter selection {\"cik\":\"0000019617\",\"topics\":\"liquidity,covenants,collateral\"}; query-bearing probes preserve the documented GET selector validation and JSON/CSV format. HEAD does not read prepared data, verify buyer proofs, settle payments or recover deliveries. Payment, authorization and recovery credentials are rejected. A challenge confirms payment configuration, not prepared-data availability.",
+        "operationId": "inspectPaidDisclosureTopicPacketDiscovery",
         "responses": {
           "400": {
             "description": "Credentials or invalid query-bearing selectors were rejected; no payment offer."
@@ -3326,7 +3594,7 @@
           "Paid x402 data"
         ],
         "summary": "Bank capital, credit & funding batches",
-        "description": "Compare selected capital, credit-quality and funding observations across up to four legal banks for one explicit FFIEC Call Report quarter, with source evidence and prior-quarter changes. Validated prepared FFIEC reports for the selected legal banks only. Every current report is required; an unavailable prior report leaves comparisons unavailable. Bank identifiers do not imply parent-company ownership or SEC issuer equivalence. Native dollar and percentage units and ratio denominators are preserved. No supervisory rating, credit score or real-time condition is inferred. 1–4 unique legal-bank RSSDs; one explicit quarter; up to 4 MiB. Unknown, duplicate and empty query parameters are rejected before a payment offer. Prepared reads never acquire new upstream data. Each successful bounded request costs 0.01 USDC.",
+        "description": "Compare selected capital, credit-quality and funding observations across up to four legal banks for one explicit FFIEC Call Report quarter, with source evidence and prior-quarter changes. Validated prepared FFIEC reports for the selected legal banks only. Every current report is required; an unavailable prior report leaves comparisons unavailable. Bank identifiers do not imply parent-company ownership or SEC issuer equivalence. Native dollar and percentage units and ratio denominators are preserved. No supervisory rating, credit score or real-time condition is inferred. 1–4 unique legal-bank RSSDs; one explicit quarter; up to 4 MiB. Unknown, duplicate and empty query parameters are rejected before a payment offer. Prepared reads never acquire new upstream data. Each successful bounded request costs 0.01 USDC. With no query parameters, this purchases the documented starter selection {\"rssds\":\"852218,480228\",\"period\":\"2026-06-30\"}. Once any query field is supplied, all originally required selectors must be present; partial or invalid queries never fall back to a starter selection. Starter quarters are explicit historical quarters, not an automatic latest-quarter selection.",
         "security": [
           {
             "X402Payment": []
@@ -3353,10 +3621,6 @@
           "inputSchema": {
             "type": "object",
             "additionalProperties": false,
-            "required": [
-              "rssds",
-              "period"
-            ],
             "properties": {
               "rssds": {
                 "type": "string",
@@ -3390,7 +3654,18 @@
                 ],
                 "default": "json"
               }
-            }
+            },
+            "anyOf": [
+              {
+                "maxProperties": 0
+              },
+              {
+                "required": [
+                  "rssds",
+                  "period"
+                ]
+              }
+            ]
           },
           "outputSchema": "#/components/schemas/PaidBankRiskBatch",
           "extension": "bazaar",
@@ -3412,22 +3687,24 @@
           {
             "name": "rssds",
             "in": "query",
-            "required": true,
+            "required": false,
             "schema": {
               "type": "string",
               "pattern": "^[1-9][0-9]{0,9}(,[1-9][0-9]{0,9}){0,3}$",
               "description": "One to four unique legal-bank RSSDs with complete prepared current Call Reports."
-            }
+            },
+            "description": "Required when any query parameter is supplied."
           },
           {
             "name": "period",
             "in": "query",
-            "required": true,
+            "required": false,
             "schema": {
               "type": "string",
               "pattern": "^[0-9]{4}-(03-31|06-30|09-30|12-31)$",
               "description": "Required exact prepared reporting quarter; directory dates alone do not establish a prepared report."
-            }
+            },
+            "description": "Required when any query parameter is supplied."
           },
           {
             "name": "comparison",
@@ -3527,12 +3804,16 @@
             "$ref": "#/components/responses/X402Unavailable"
           }
         },
-        "operationId": "readPaidBankRiskBatch"
+        "operationId": "readPaidBankRiskBatch",
+        "x-starter-selection": {
+          "rssds": "852218,480228",
+          "period": "2026-06-30"
+        }
       },
       "head": {
         "summary": "Inspect unpaid GET discovery metadata",
-        "description": "A bodyless, nonsettling discovery challenge for this GET product. Bare paths advertise required GET selectors for catalog admission; query-bearing probes preserve the documented GET selector validation and JSON/CSV format. HEAD does not read prepared data, verify buyer proofs, settle payments or recover deliveries. Payment, authorization and recovery credentials are rejected. A challenge confirms payment configuration, not prepared-data availability.",
-        "operationId": "readPaidBankRiskBatchDiscoveryHead",
+        "description": "A bodyless, nonsettling discovery challenge for this GET product. Bare paths advertise the GET starter selection {\"rssds\":\"852218,480228\",\"period\":\"2026-06-30\"}; query-bearing probes preserve the documented GET selector validation and JSON/CSV format. HEAD does not read prepared data, verify buyer proofs, settle payments or recover deliveries. Payment, authorization and recovery credentials are rejected. A challenge confirms payment configuration, not prepared-data availability.",
+        "operationId": "inspectPaidBankRiskBatchDiscovery",
         "responses": {
           "400": {
             "description": "Credentials or invalid query-bearing selectors were rejected; no payment offer."
@@ -8808,12 +9089,12 @@
         }
       },
       "X402MethodNotAllowed": {
-        "description": "HEAD is unsupported and returns no body. Only GET and OPTIONS are supported on paid resources; HEAD never verifies or settles a payment.",
+        "description": "Unsupported request method. Paid resources expose GET, unpaid bodyless HEAD discovery and OPTIONS; HEAD never verifies or settles payment.",
         "headers": {
           "Allow": {
             "schema": {
               "type": "string",
-              "const": "GET, OPTIONS"
+              "const": "GET, HEAD, OPTIONS"
             }
           }
         }

@@ -72,8 +72,13 @@ export function validateOffer(offer, requestUrl) {
   return validateDiscoveryOffer(offer, requestUrl, DISCOVERY_REQUESTS.indexOf(requestUrl));
 }
 
-/** A probe describes a GET contract; it can never become a purchase URL. */
+/** Query-free probes are read-only here; registration uses canonical selections. */
 export function validateDiscoveryProbe(offer, resourceUrl) {
+  return validateDiscoveryOffer(offer, resourceUrl, DISCOVERY_RESOURCES.indexOf(resourceUrl));
+}
+
+/** The admission worker fetches this bare GET, which must be a real valid offer. */
+export function validateDiscoveryAdmission(offer, resourceUrl) {
   return validateDiscoveryOffer(offer, resourceUrl, DISCOVERY_RESOURCES.indexOf(resourceUrl));
 }
 
@@ -84,7 +89,7 @@ export function guardedDiscoveryFetch(fetchImpl, { register = false } = {}) {
     const method = (init.method || 'GET').toUpperCase();
     const headers = new Headers(init.headers);
     if (['PAYMENT-SIGNATURE', 'X-PAYMENT', 'X-X402-Recovery-Token', 'Authorization', 'Proxy-Authorization', 'Cookie'].some(name => headers.has(name))) throw new Error('Audit transport cannot submit a seller payment or credentials');
-    const seller = DISCOVERY_REQUESTS.includes(url.href);
+    const seller = DISCOVERY_REQUESTS.includes(url.href) || DISCOVERY_RESOURCES.includes(url.href);
     const probe = method === 'HEAD' && DISCOVERY_RESOURCES.includes(url.href);
     const catalog = url.origin === FACILITATOR && ['/discovery/resources', '/discovery/listing-status'].includes(url.pathname);
     const verification = register && url.href === `${FACILITATOR}/verify` && method === 'POST';
@@ -142,8 +147,8 @@ export async function checkDiscovery({ register = false, keypairPath, fetchImpl 
   if (keypairPath && !register) throw new Error('--keypair requires explicit --register; read-only mode never reads a keypair.');
   const request = guardedDiscoveryFetch(fetchImpl, { register });
   const offers = [];
-  // Validate every live GET offer and its query-free HEAD probe before reading
-  // a private key, generating a signer, signing or sending anything to /verify.
+  // Validate every selected GET, query-free HEAD and actual bare GET admission
+  // offer before reading a key, generating a signer, signing or sending /verify.
   for (const requestUrl of DISCOVERY_REQUESTS) {
     const response = await request(requestUrl);
     if (response.status !== 402) throw new Error(`Expected HTTP 402 at ${requestUrl}; received ${response.status}`);
@@ -161,9 +166,17 @@ export async function checkDiscovery({ register = false, keypairPath, fetchImpl 
     validateDiscoveryProbe(decodePaymentRequiredHeader(header), entry.resource);
     entry.probe = { method: 'HEAD', httpStatus: response.status, offer: 'valid', purchaseMethod: 'GET' };
   }
+  for (const entry of offers) {
+    const response = await request(entry.resource);
+    if (response.status !== 402) throw new Error(`Expected unpaid admission GET HTTP 402 at ${entry.resource}; received ${response.status}`);
+    const header = response.headers.get('PAYMENT-REQUIRED');
+    if (!header) throw new Error(`Missing admission GET PAYMENT-REQUIRED header at ${entry.resource}`);
+    validateDiscoveryAdmission(decodePaymentRequiredHeader(header), entry.resource);
+    entry.admission = { method: 'GET', httpStatus: response.status, offer: 'valid' };
+  }
   const buildPayload = register ? (createPayload || (keypairPath ? await createLocalPayloadBuilder(keypairPath) : await createEphemeralPayloadBuilder())) : null;
   const resources = [];
-  for (const { requestUrl, resource, offer, probe } of offers) {
+  for (const { requestUrl, resource, offer, probe, admission } of offers) {
     let registration;
     if (register) {
       const paymentPayload = await buildPayload(offer);
@@ -183,7 +196,7 @@ export async function checkDiscovery({ register = false, keypairPath, fetchImpl 
     }
     const statusResponse = await request(`${FACILITATOR}/discovery/listing-status?resource=${encodeURIComponent(resource)}`);
     const status = await statusResponse.json();
-    resources.push({ requestUrl, resource, offer: 'valid', probe, ...(registration ? { registration } : {}), listing: { httpStatus: statusResponse.status, listed: status.listed === true, hidden: status.hidden, hiddenReason: status.hiddenReason, lastWrite: status.lastWrite, lastProbe: status.lastProbe } });
+    resources.push({ requestUrl, resource, offer: 'valid', probe, admission, ...(registration ? { registration } : {}), listing: { httpStatus: statusResponse.status, listed: status.listed === true, hidden: status.hidden, hiddenReason: status.hiddenReason, lastWrite: status.lastWrite, lastProbe: status.lastProbe } });
   }
   const catalogResponse = await request(`${FACILITATOR}/discovery/resources?payTo=${encodeURIComponent(X402_DEPLOYMENT_PAY_TO)}&network=${encodeURIComponent(X402_DEPLOYMENT_NETWORK)}&extensions=bazaar&limit=100`);
   if (!catalogResponse.ok) throw new Error(`Catalog request failed: HTTP ${catalogResponse.status}`);

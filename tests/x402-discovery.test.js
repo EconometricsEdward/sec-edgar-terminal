@@ -4,12 +4,39 @@ import { readFileSync } from 'node:fs';
 import Ajv from 'ajv';
 import { bazaarResourceServerExtension, validateDiscoveryExtension, validateDiscoveryExtensionSpec, sanitizeResourceServiceMetadata, extractDiscoveryInfo } from '@x402/extensions/bazaar';
 import { x402DiscoveryOptions, X402_OUTPUT_SCHEMAS, X402_DISCOVERY_DESCRIPTORS } from '../src/utils/x402Discovery.js';
-import { buildX402Catalog, X402_RESOURCES } from '../src/utils/x402Catalog.js';
+import { buildX402Catalog, X402_RESOURCES, getX402StarterSelection } from '../src/utils/x402Catalog.js';
 import { buildAnalysisCompany, packAnalysisCompany } from '../src/utils/analysisResearch.js';
 import { createPaidResearchReaders } from '../src/utils/x402Research.js';
 import { X402_SOLANA_NETWORK } from '../src/utils/x402Payments.js';
 
 const validators = Object.fromEntries(Object.entries(X402_OUTPUT_SCHEMAS).map(([id, schema]) => [id, new Ajv({ allErrors: true }).compile(schema)]));
+
+test('starter discovery contracts accept empty queries or complete selectors and reject partial queries', () => {
+  const document = JSON.parse(readFileSync(new URL('../public/openapi.json', import.meta.url), 'utf8'));
+  const catalog = buildX402Catalog({ network: X402_SOLANA_NETWORK, price: '0.01', currency: 'USDC' });
+  let starters = 0;
+  for (const resource of X402_RESOURCES) {
+    const starter = getX402StarterSelection(resource);
+    if (!starter) continue;
+    starters++;
+    const schema = x402DiscoveryOptions(resource.id).extensions.bazaar.schema.properties.input.properties.queryParams;
+    const validate = new Ajv({ strict: false, coerceTypes: true, logger: false }).compile(schema);
+    assert.equal(validate({}), true, resource.id);
+    assert.equal(validate(structuredClone(starter)), true, resource.id);
+    assert.equal(validate({ format: 'csv' }), false, resource.id);
+    assert.equal(validate({ unknown: 'value' }), false, resource.id);
+    for (const required of X402_DISCOVERY_DESCRIPTORS[resource.id].inputSchema.required) {
+      assert.equal(validate({ ...starter, [required]: '' }), false, `${resource.id}: empty ${required}`);
+    }
+    if (resource.id === 'bank-risk-batch') assert.equal(validate({ rssds: starter.rssds }), false);
+    const operation = document.paths[resource.path].get;
+    assert.deepEqual(operation['x-bazaar'].inputSchema, schema);
+    assert.deepEqual(operation['x-starter-selection'], starter);
+    assert.deepEqual(catalog.resources.find(item => item.id === resource.id).starterSelection, starter);
+    assert.ok(operation.parameters.filter(item => item.in === 'query').every(item => item.required === false));
+  }
+  assert.equal(starters, 6);
+});
 
 test('OpenAPI payment examples and Bazaar tags identify the actual selected product', () => {
   const document = JSON.parse(readFileSync(new URL('../public/openapi.json', import.meta.url), 'utf8'));

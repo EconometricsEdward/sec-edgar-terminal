@@ -6,6 +6,12 @@ export function x402DiscoveryOptions(resourceId, { format = 'json' } = {}) {
   const descriptor = X402_DISCOVERY_DESCRIPTORS[resourceId];
   if (!descriptor) throw new Error('Unknown x402 discovery resource');
   const { routePattern, tags, omitDiscoveryRouteTemplate, ...declaration } = structuredClone(descriptor);
+  // Empty queries buy the documented starter selection. Once a caller supplies
+  // any query field, the original required fields still apply as a group.
+  if (declaration.inputSchema.required?.length) {
+    const { required, ...schema } = declaration.inputSchema;
+    declaration.inputSchema = { ...schema, anyOf: [{ maxProperties: 0 }, { required }] };
+  }
   if (format !== 'json' && format !== 'csv') throw new Error('Unknown discovery format');
   if (format === 'csv') {
     if (!descriptor.inputSchema.properties.format) throw new Error('CSV is unavailable for this resource');
