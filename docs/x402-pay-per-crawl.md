@@ -115,6 +115,24 @@ Individual 0.01-USDC payments accumulate in this personal wallet. They do not go
 
 The collection key is a standard 64-byte Solana JSON keypair created on the owner's Windows computer and protected by user-only Windows permissions. It has no generated recovery phrase. Preserve a private encrypted or offline backup outside the repository and deployment folders. A funded native-USDC associated account is required before receiving paid requests. Receiving does not require the owner to hold SOL; later manual transfers require SOL for network fees.
 
+### Manual earnings transfer
+
+`scripts/transfer-x402-earnings.mjs` is a local-only helper. Its default preview reads public Solana mainnet accounts and estimates the network fee without loading a key, signing or sending. Enter both the amount to transfer and the deposit minimum currently displayed under Kraken **Deposit → USDC → Solana**:
+
+```powershell
+node scripts/transfer-x402-earnings.mjs --amount 1 --kraken-minimum 0.4
+```
+
+The example minimum is the owner's account value confirmed on October 5, 2026; check it again before each transfer. The helper pins the collection wallet, Kraken destination and native-USDC mint, validates both associated token accounts, and reports insufficient USDC, SOL or deposit amount. It does not create accounts or transfer rent. Kraken's onchain address balance is not an account-credit balance.
+
+Only an explicitly requested manual send can load a local key and broadcast one transfer. Review the preview, verify Kraken still shows the exact destination above, and keep the collection key outside this repository. Run this yourself when you intend to move funds, replacing the key path with your absolute local path:
+
+```powershell
+node scripts/transfer-x402-earnings.mjs --amount 1 --kraken-minimum 0.4 --send --confirm-destination 5qe4MpMXzT6TeaUNZz7ApAzoQzTGpVWbz1VBGbGhrdiR --keypair 'C:\private\collection-keypair.json'
+```
+
+The send reruns public checks before reading the key. It rejects repository key paths, including resolved junction or symlink aliases. No automatic cashout or retry is configured. If a broadcast response is uncertain, reconcile its public transaction ID before sending again. Finalization on Solana is separate from Kraken credit; inspect Kraken deposit history. Never upload the key or add this command to a schedule.
+
 The default network is Solana mainnet (`solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp`) and the accepted asset is USDC (`EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v`). The charge is fixed at 10,000 USDC base units (six decimals), or 0.01 USDC. Production rejects testnet configuration. Development may use the separately configured test network; do not describe testnet transactions as earned revenue.
 
 The configured owner must also have a canonical associated token account for native USDC. The server checks that receiving account before allowing paid requests. If it is absent, the public status is `recipient-setup-required` and paid routes return an uncharged availability error. The owner can create the USDC receiving account through their wallet or receive a native-USDC transfer that creates it. Once the required account exists and the readiness check succeeds, the service can accept payments without changing the public payout address. `recipient-check-unavailable` instead means the read-only account check failed temporarily; it does not establish a missing account. These readiness states block payments and preserve the public recipient in the catalog.
