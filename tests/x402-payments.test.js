@@ -183,7 +183,7 @@ test('configuration requires a real nonzero recipient and refuses production tes
   assert.equal(getX402Config({ X402_PAY_TO: '11111111111111111111111111111111' }).ready, false);
   assert.equal(getX402Config({ NODE_ENV: 'production', X402_PAY_TO: receivingAddress, X402_NETWORK: 'solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1' }).ready, false);
   assert.equal(getX402Config({ NODE_ENV: 'test', X402_PAY_TO: receivingAddress, X402_NETWORK: 'solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1' }).ready, true);
-  assert.equal(getX402Config({ VERCEL_ENV: 'production', NODE_ENV: 'production' }).payTo, receivingAddress);
+  assert.equal(getX402Config({ VERCEL_ENV: 'production', NODE_ENV: 'production' }).payTo, '3gmsqc9fhKhPwCz1guDJ3cvs7U8mAttwZWLett1isiD6');
   assert.equal(getX402Config({ VERCEL_ENV: 'production', NODE_ENV: 'production' }).requireRecipientReady, true);
   assert.equal(getX402Config({ NODE_ENV: 'development' }).ready, false);
   assert.equal(getX402PublicConfiguration({ VERCEL_ENV: 'preview', X402_PAY_TO: receivingAddress }).status, 'configuration-required');
